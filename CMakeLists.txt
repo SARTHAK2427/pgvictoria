@@ -17,6 +17,10 @@ endif(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 
 project(pgvictoria VERSION ${VERSION_STRING} LANGUAGES  C)
 
+if (NOT DEFINED DOCS)
+  set(DOCS TRUE)
+endif()
+
 include(CTest)
 enable_testing()
 
@@ -132,3 +136,4 @@ endif()
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src/")
 
 add_subdirectory(src)
+add_subdirectory(doc)
