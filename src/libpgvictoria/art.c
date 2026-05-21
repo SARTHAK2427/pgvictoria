@@ -33,7 +33,7 @@
 
 #include <string.h>
 
-#define IS_LEAF(x)  (((uintptr_t)(x) & 1))
+#define IS_LEAF(x)  (((uintptr_t)(x)&1))
 #define SET_LEAF(x) ((void*)((uintptr_t)(x) | 1))
 #define GET_LEAF(x) ((struct art_leaf*)((void*)((uintptr_t)(x) & ~1)))
 

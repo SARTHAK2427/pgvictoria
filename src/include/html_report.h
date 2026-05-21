@@ -26,40 +26,20 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PGVICTORIA_POSTGRESQL_H
-#define PGVICTORIA_POSTGRESQL_H
+#ifndef PGVICTORIA_HTML_REPORT_H
+#define PGVICTORIA_HTML_REPORT_H
 
-int pgvictoria_get_min_supported_version(void);
-int pgvictoria_get_max_supported_version(void);
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* pgvictoria */
 #include <pgvictoria.h>
-#include <json.h>
+#include <report.h>
 
 /**
- * Get the PostgreSQL baseline configuration for a specific version.
- * 
- * @param version The PostgreSQL version (e.g. 14, 15, 16, 17, 18)
- * @return The JSON baseline object, or NULL if the version is not supported or parsing fails.
+ * Generate a beautifully formatted HTML report from difference items.
+ * @param filename The configuration filename analyzed.
+ * @param output_html_path The destination path of the HTML file.
+ * @param version The resolved PostgreSQL version.
+ * @param head The linked list of comparison results.
+ * @return 0 upon success, otherwise 1.
  */
-struct json*
-pgvictoria_get_baseline(int version);
-
-/**
- * Check if the PostgreSQL version is supported.
- * 
- * @param version The PostgreSQL version
- * @return true if supported, false otherwise
- */
-bool
-pgvictoria_is_version_supported(int version);
-
-#ifdef __cplusplus
-}
-#endif
+int pgvictoria_generate_html_report(const char* filename, const char* output_html_path, int version, struct pgvictoria_diff_item* head);
 
 #endif

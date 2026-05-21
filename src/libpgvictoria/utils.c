@@ -161,7 +161,7 @@ pgvictoria_read_byte(void* data)
 uint8_t
 pgvictoria_read_uint8(void* data)
 {
-   return (uint8_t)*((char*)data);
+   return (uint8_t) * ((char*)data);
 }
 
 int16_t
@@ -4142,4 +4142,40 @@ pgvictoria_snprintf(char* buf, size_t n, const char* fmt, ...)
    va_end(ap);
 
    return ret;
+}
+
+void
+pgvictoria_cleanse(void* data, size_t size)
+{
+   if (data == NULL || size == 0)
+   {
+      return;
+   }
+   volatile unsigned char* p = (volatile unsigned char*)data;
+   while (size--)
+   {
+      *p++ = 0;
+   }
+}
+
+bool
+pgvictoria_is_binary_file(char* path)
+{
+   FILE* fp = fopen(path, "rb");
+   if (!fp)
+   {
+      return false;
+   }
+   char buf[1024];
+   size_t n = fread(buf, 1, sizeof(buf), fp);
+   fclose(fp);
+
+   for (size_t i = 0; i < n; i++)
+   {
+      if (buf[i] == '\0')
+      {
+         return true;
+      }
+   }
+   return false;
 }

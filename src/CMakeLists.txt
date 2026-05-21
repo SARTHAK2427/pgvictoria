@@ -25,6 +25,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LIBEV_INCLUDE_DIRS}
     ${OPENSSL_INCLUDE_DIR}
+    ${LIBXML2_INCLUDE_DIRS}
   )
 
   #
@@ -35,6 +36,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     ${OPENSSL_CRYPTO_LIBRARY}
     ${OPENSSL_SSL_LIBRARY}
     ${LIBATOMIC_LIBRARY}
+    ${LIBXML2_LIBRARIES}
   )
 
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
@@ -53,6 +55,7 @@ else()
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LIBEV_INCLUDE_DIRS}
     ${OPENSSL_INCLUDE_DIR}
+    ${LIBXML2_INCLUDE_DIRS}
   )
 
   #
@@ -62,6 +65,7 @@ else()
     ${LIBEV_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
     ${OPENSSL_SSL_LIBRARY}
+    ${LIBXML2_LIBRARIES}
   )
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
@@ -280,7 +284,6 @@ target_link_libraries(pgvictoria-bin pgvictoria)
 
 install(TARGETS pgvictoria-bin DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-#
 # Build pgvictoria-config-bin
 #
 add_executable(pgvictoria-config-bin config.c)
@@ -293,3 +296,16 @@ if(NOT MSVC)
   target_compile_options(pgvictoria-config-bin PRIVATE -Wall -Wextra -Werror)
 endif()
 install(TARGETS pgvictoria-config-bin DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+#
+# Build pgvictoria-cli
+#
+add_executable(pgvictoria-cli-bin cli.c)
+if (CMAKE_C_LINK_PIE_SUPPORTED)
+  set_target_properties(pgvictoria-cli-bin PROPERTIES LINKER_LANGUAGE C OUTPUT_NAME pgvictoria-cli POSITION_INDEPENDENT_CODE TRUE)
+else()
+  set_target_properties(pgvictoria-cli-bin PROPERTIES LINKER_LANGUAGE C OUTPUT_NAME pgvictoria-cli POSITION_INDEPENDENT_CODE FALSE)
+endif()
+target_link_libraries(pgvictoria-cli-bin pgvictoria)
+
+install(TARGETS pgvictoria-cli-bin DESTINATION ${CMAKE_INSTALL_BINDIR})

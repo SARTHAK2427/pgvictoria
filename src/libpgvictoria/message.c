@@ -608,7 +608,7 @@ pgvictoria_create_startup_message(char* username, char* database, bool replicati
 
    us = strlen(username);
    ds = strlen(database);
-   size = 4 + 4 + 4 + 1 + us + 1 + 8 + 1 + ds + 1 + 17 + 9 + 1;
+   size = 4 + 4 + 4 + 1 + us + 1 + 8 + 1 + ds + 1 + 17 + 11 + 1;
 
    if (replication)
    {
@@ -630,8 +630,8 @@ pgvictoria_create_startup_message(char* username, char* database, bool replicati
 
    if (replication)
    {
-      pgvictoria_write_string(m->data + 13 + us + 1 + 9 + ds + 1 + 17 + 9, "replication");
-      pgvictoria_write_string(m->data + 13 + us + 1 + 9 + ds + 1 + 17 + 9 + 12, "1");
+      pgvictoria_write_string(m->data + 13 + us + 1 + 9 + ds + 1 + 17 + 11, "replication");
+      pgvictoria_write_string(m->data + 13 + us + 1 + 9 + ds + 1 + 17 + 11 + 12, "1");
    }
 
    *msg = m;

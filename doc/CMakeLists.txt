@@ -53,5 +53,13 @@ if (DOCS)
       VERBATIM
     )
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pgvictoria-config.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+
+    add_custom_target(pgvictoria-cli.1 ALL
+      COMMAND ${RST2MAN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/man/pgvictoria-cli.1.rst pgvictoria-cli.1
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      COMMENT "Generating pgvictoria-cli.1"
+      VERBATIM
+    )
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pgvictoria-cli.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
   endif()
 endif()

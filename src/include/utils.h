@@ -1149,6 +1149,22 @@ pgvictoria_extract_message_from_data(char type, void* data, size_t data_size, st
 int
 pgvictoria_snprintf(char* buf, size_t n, const char* fmt, ...);
 
+/**
+ * Cleanse memory securely to overwrite sensitive credentials
+ * @param data The data buffer
+ * @param size The size of the buffer
+ */
+void
+pgvictoria_cleanse(void* data, size_t size);
+
+/**
+ * Check if the given filename represents a binary file.
+ * @param path The file path to check
+ * @return true if binary, false otherwise
+ */
+bool
+pgvictoria_is_binary_file(char* path);
+
 #ifdef __cplusplus
 }
 #endif

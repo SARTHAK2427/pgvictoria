@@ -111,6 +111,13 @@ else ()
   message(FATAL_ERROR "rst2man needed")
 endif()
 
+find_package(LibXml2 REQUIRED)
+if (LIBXML2_FOUND)
+  message(STATUS "LibXml2 found")
+else ()
+  message(FATAL_ERROR "LibXml2 needed")
+endif()
+
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   find_package(Libatomic)
   if (LIBATOMIC_FOUND)
