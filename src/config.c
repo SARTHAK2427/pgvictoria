@@ -61,6 +61,11 @@
 
 #define MIN(a, b)           ((a) < (b) ? (a) : (b))
 
+enum config_target {
+   TARGET_MAIN,
+   TARGET_CLI
+};
+
 struct pgvictoria_command
 {
    const char* command;
@@ -162,7 +167,7 @@ parse_command(int argc, char** argv, int offset, struct pgvictoria_parsed_comman
                break;
             }
          }
-         
+
          if (!count_ok && command_table[i].accepted_argument_count[0] == 0 && arg_idx == 0)
          {
             count_ok = true;
@@ -199,7 +204,7 @@ usage(void)
    printf("\n");
 
    printf("Usage:\n");
-   printf("  pgvictoria-config [ OPTIONS ] [ COMMAND ]\n");
+   printf("  pgvictoria-config [ OPTIONS ] [main|cli] [ COMMAND ]\n");
    printf("\n");
    printf("Options:\n");
    printf("  -o, --output FILE        Set the output file path (default: ./pgvictoria.conf)\n");
@@ -209,7 +214,7 @@ usage(void)
    printf("  -?, --help               Display help\n");
    printf("\n");
    printf("Commands:\n");
-   printf("  init                     Generate a pgvictoria.conf interactively\n");
+   printf("  init                     Generate a configuration file interactively\n");
    printf("  get <file> <section> <key>\n");
    printf("                           Get a configuration value\n");
    printf("  set <file> <section> <key> <value> [comment]\n");
@@ -356,7 +361,7 @@ write_key_value(FILE* file, const char* key, const char* value)
  * @return 0 upon success, 1 otherwise
  */
 static int
-config_init(const char* output_path, bool quiet, bool force)
+config_init(const char* output_path, bool quiet, bool force, enum config_target target)
 {
    FILE* file = NULL;
    char host[MISC_LENGTH];
@@ -398,47 +403,93 @@ config_init(const char* output_path, bool quiet, bool force)
 
    if (!quiet)
    {
-      printf("--- [pgvictoria] section ---\n\n");
+      if (target == TARGET_CLI)
+      {
+         printf("--- [pgvictoria-cli] section ---\n\n");
+      }
+      else
+      {
+         printf("--- [pgvictoria] section ---\n\n");
+      }
    }
 
-   if (quiet)
+   if (target == TARGET_CLI)
    {
-      strcpy(host, "localhost");
-      strcpy(log_type, "console");
-      strcpy(log_level, "info");
-      strcpy(log_path, "");
-      strcpy(unix_socket_dir, "/tmp/");
+      if (quiet)
+      {
+         strcpy(host, "localhost");
+         strcpy(log_type, "console");
+         strcpy(log_level, "info");
+         strcpy(log_path, "");
+      }
+      else
+      {
+         if (prompt_input("Host", "localhost", host, sizeof(host)))
+         {
+            warnx("Invalid input for host");
+            goto error;
+         }
+
+         if (prompt_input("Log type (console, file, syslog)", "console", log_type, sizeof(log_type)))
+         {
+            warnx("Invalid input for log_type");
+            goto error;
+         }
+
+         if (prompt_input("Log level (fatal, error, warn, info, debug, trace)", "info", log_level, sizeof(log_level)))
+         {
+            warnx("Invalid input for log_level");
+            goto error;
+         }
+
+         if (prompt_input("Log path", "", log_path, sizeof(log_path)))
+         {
+            warnx("Invalid input for log_path");
+            goto error;
+         }
+      }
    }
    else
    {
-      if (prompt_input("Host (bind address)", "localhost", host, sizeof(host)))
+      if (quiet)
       {
-         warnx("Invalid input for host");
-         goto error;
+         strcpy(host, "localhost");
+         strcpy(log_type, "console");
+         strcpy(log_level, "info");
+         strcpy(log_path, "");
+         strcpy(unix_socket_dir, "/tmp/");
       }
-
-      if (prompt_input("Log type (console, file, syslog)", "console", log_type, sizeof(log_type)))
+      else
       {
-         warnx("Invalid input for log_type");
-         goto error;
-      }
+         if (prompt_input("Host (bind address)", "localhost", host, sizeof(host)))
+         {
+            warnx("Invalid input for host");
+            goto error;
+         }
 
-      if (prompt_input("Log level (fatal, error, warn, info, debug, trace)", "info", log_level, sizeof(log_level)))
-      {
-         warnx("Invalid input for log_level");
-         goto error;
-      }
+         if (prompt_input("Log type (console, file, syslog)", "console", log_type, sizeof(log_type)))
+         {
+            warnx("Invalid input for log_type");
+            goto error;
+         }
 
-      if (prompt_input("Log path", "", log_path, sizeof(log_path)))
-      {
-         warnx("Invalid input for log_path");
-         goto error;
-      }
+         if (prompt_input("Log level (fatal, error, warn, info, debug, trace)", "info", log_level, sizeof(log_level)))
+         {
+            warnx("Invalid input for log_level");
+            goto error;
+         }
 
-      if (prompt_input("Unix socket directory", "/tmp/", unix_socket_dir, sizeof(unix_socket_dir)))
-      {
-         warnx("Invalid input for unix_socket_dir");
-         goto error;
+         if (prompt_input("Log path", "", log_path, sizeof(log_path)))
+         {
+            warnx("Invalid input for log_path");
+            goto error;
+         }
+
+         if (prompt_input("Unix socket directory", "/tmp/", unix_socket_dir, sizeof(unix_socket_dir)))
+         {
+            warnx("Invalid input for unix_socket_dir");
+            goto error;
+         }
       }
    }
 
@@ -456,67 +507,83 @@ config_init(const char* output_path, bool quiet, bool force)
    fprintf(file, "# generated by pgvictoria-config version %s\n", PGVICTORIA_VERSION);
    fprintf(file, "# on date %s\n\n", date_str);
 
-   write_section(file, "pgvictoria");
-   write_key_value(file, "host", host);
-   fprintf(file, "\n");
-   write_key_value(file, "log_type", log_type);
-   write_key_value(file, "log_level", log_level);
-   if (strlen(log_path) > 0)
+   if (target == TARGET_CLI)
    {
-      write_key_value(file, "log_path", log_path);
-   }
-   fprintf(file, "\n");
-   write_key_value(file, "unix_socket_dir", unix_socket_dir);
-   fprintf(file, "\n");
-
-   if (quiet)
-   {
-      write_section(file, "primary");
-      write_key_value(file, "host", "localhost");
-      write_key_value(file, "port", "5432");
-      write_key_value(file, "user", "pgvictoria");
+      write_section(file, "pgvictoria-cli");
+      write_key_value(file, "host", host);
+      fprintf(file, "\n");
+      write_key_value(file, "log_type", log_type);
+      write_key_value(file, "log_level", log_level);
+      if (strlen(log_path) > 0)
+      {
+         write_key_value(file, "log_path", log_path);
+      }
       fprintf(file, "\n");
    }
    else
    {
-      while (prompt_yes_no("\nAdd a PostgreSQL server?", true))
+      write_section(file, "pgvictoria");
+      write_key_value(file, "host", host);
+      fprintf(file, "\n");
+      write_key_value(file, "log_type", log_type);
+      write_key_value(file, "log_level", log_level);
+      if (strlen(log_path) > 0)
       {
-         char section_name[MISC_LENGTH];
-         char server_host[MISC_LENGTH];
-         char server_port[MISC_LENGTH];
-         char server_user[MISC_LENGTH];
+         write_key_value(file, "log_path", log_path);
+      }
+      fprintf(file, "\n");
+      write_key_value(file, "unix_socket_dir", unix_socket_dir);
+      fprintf(file, "\n");
 
-         printf("\n--- Server section ---\n\n");
-
-         if (prompt_input("Section name", "primary", section_name, sizeof(section_name)))
-         {
-            warnx("Invalid input for section name");
-            continue;
-         }
-
-         if (prompt_input("Host", "localhost", server_host, sizeof(server_host)))
-         {
-            warnx("Invalid input for server host");
-            continue;
-         }
-
-         if (prompt_input("Port", "5432", server_port, sizeof(server_port)))
-         {
-            warnx("Invalid input for server port");
-            continue;
-         }
-
-         if (prompt_input("User", "pgvictoria", server_user, sizeof(server_user)))
-         {
-            warnx("Invalid input for server user");
-            continue;
-         }
-
-         write_section(file, section_name);
-         write_key_value(file, "host", server_host);
-         write_key_value(file, "port", server_port);
-         write_key_value(file, "user", server_user);
+      if (quiet)
+      {
+         write_section(file, "primary");
+         write_key_value(file, "host", "localhost");
+         write_key_value(file, "port", "5432");
+         write_key_value(file, "user", "pgvictoria");
          fprintf(file, "\n");
+      }
+      else
+      {
+         while (prompt_yes_no("\nAdd a PostgreSQL server?", true))
+         {
+            char section_name[MISC_LENGTH];
+            char server_host[MISC_LENGTH];
+            char server_port[MISC_LENGTH];
+            char server_user[MISC_LENGTH];
+
+            printf("\n--- Server section ---\n\n");
+
+            if (prompt_input("Section name", "primary", section_name, sizeof(section_name)))
+            {
+               warnx("Invalid input for section name");
+               continue;
+            }
+
+            if (prompt_input("Host", "localhost", server_host, sizeof(server_host)))
+            {
+               warnx("Invalid input for server host");
+               continue;
+            }
+
+            if (prompt_input("Port", "5432", server_port, sizeof(server_port)))
+            {
+               warnx("Invalid input for server port");
+               continue;
+            }
+
+            if (prompt_input("User", "pgvictoria", server_user, sizeof(server_user)))
+            {
+               warnx("Invalid input for server user");
+               continue;
+            }
+
+            write_section(file, section_name);
+            write_key_value(file, "host", server_host);
+            write_key_value(file, "port", server_port);
+            write_key_value(file, "user", server_user);
+            fprintf(file, "\n");
+         }
       }
    }
 
@@ -1148,6 +1215,7 @@ main(int argc, char** argv)
    int option_index = 0;
    size_t command_count = sizeof(command_table) / sizeof(struct pgvictoria_command);
    struct pgvictoria_parsed_command parsed = {.cmd = NULL, .args = {0}};
+   enum config_target target = TARGET_MAIN;
 
    setbuf(stdout, NULL);
 
@@ -1189,6 +1257,20 @@ main(int argc, char** argv)
       }
    }
 
+   if (argc > optind)
+   {
+      if (!strcmp(argv[optind], "main"))
+      {
+         target = TARGET_MAIN;
+         optind++;
+      }
+      else if (!strcmp(argv[optind], "cli"))
+      {
+         target = TARGET_CLI;
+         optind++;
+      }
+   }
+
    if (getuid() == 0)
    {
       errx(1, "pgvictoria-config: Using the root account is not allowed");
@@ -1210,9 +1292,16 @@ main(int argc, char** argv)
    {
       if (output_path == NULL)
       {
-         output_path = "pgvictoria.conf";
+         if (target == TARGET_CLI)
+         {
+            output_path = "pgvictoria-cli.conf";
+         }
+         else
+         {
+            output_path = "pgvictoria.conf";
+         }
       }
-      if (config_init(output_path, quiet, force))
+      if (config_init(output_path, quiet, force, target))
       {
          errx(1, "Error generating configuration");
       }

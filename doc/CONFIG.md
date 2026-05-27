@@ -8,16 +8,18 @@ To create a new `pgvictoria.conf` file, use the `init` command:
 
 Command:
 ```
-pgvictoria-config init
+pgvictoria-config [main|cli] init
 ```
 
-This will guide you through the process of defining the listener address, logging, and your PostgreSQL servers.
+This will guide you through the process of defining the configuration. 
+- If `main` is specified (or if omitted), it will create `pgvictoria.conf` for the main server.
+- If `cli` is specified, it will create `pgvictoria-cli.conf` for the CLI utility.
 
 By default, this will create a file named `pgvictoria.conf` in the current directory. You can specify a different output path using the `-o` or `--output` flag:
 
 Example:
 ```
-pgvictoria-config -o /etc/pgvictoria/pgvictoria.conf init
+pgvictoria-config -o /etc/pgvictoria/pgvictoria.conf main init
 ```
 
 ### Quiet Mode
@@ -26,7 +28,7 @@ If you want to generate a configuration file with default values without any use
 
 Example:
 ```
-pgvictoria-config -q init
+pgvictoria-config -q cli init
 ```
 
 ### Force Overwrite

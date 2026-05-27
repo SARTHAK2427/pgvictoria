@@ -11,7 +11,7 @@ Configuration utility for pgvictoria
 SYNOPSIS
 ========
 
-pgvictoria-config [ -o OUTPUT_FILE ] [ -q ] [ -F ] [ -V ] [ -? ] [ COMMAND ]
+pgvictoria-config [ -o OUTPUT_FILE ] [ -q ] [ -F ] [ -V ] [ -? ] [main|cli] [ COMMAND ]
 
 DESCRIPTION
 ===========
@@ -40,7 +40,7 @@ COMMANDS
 ========
 
 init
-  Generate a new configuration file. By default, it runs interactively, asking for basic setup information.
+  Generate a new configuration file. The optional [main|cli] argument dictates whether it generates the main server configuration (pgvictoria.conf) or the CLI configuration (pgvictoria-cli.conf). If omitted, it defaults to main. By default, it runs interactively, asking for basic setup information.
 
 get <file> <section> <key>
   Retrieve a configuration value from the specified file.
@@ -60,6 +60,10 @@ EXAMPLES
 Generate a new configuration interactively:
 
   $ pgvictoria-config init
+
+Generate a CLI configuration interactively:
+
+  $ pgvictoria-config cli init
 
 Generate a default configuration without prompts:
 
