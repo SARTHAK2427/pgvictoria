@@ -88,16 +88,25 @@ usage(void)
    printf("  Command line utility for pgvictoria\n");
    printf("\n");
    printf("Usage:\n");
-   printf("  pgvictoria-cli [ -c CONFIG_FILE ] [ COMMAND ] \n");
+   printf("  pgvictoria-cli [ OPTIONS ] report [ CONFIG_FILE ]\n");
    printf("\n");
    printf("Commands:\n");
-   printf("  report                    Generate a configuration report against baseline\n");
+   printf("  report                       Generate a configuration report against the version baseline\n");
+   printf("                                 no arguments  - scan the live server (online mode)\n");
+   printf("                                 CONFIG_FILE   - compare a postgresql.conf file (offline mode)\n");
    printf("\n");
    printf("Options:\n");
-   printf("  -c, --config CONFIG_FILE  Set the path to the pgvictoria.conf file\n");
-   printf("  -u, --users USERS_FILE    Set the path to the pgvictoria_users.conf file\n");
-   printf("  -V, --version             Display version information\n");
-   printf("  -?, --help                Display help\n");
+   printf("  -c, --config CONFIG_FILE      Set the path to the pgvictoria.conf file\n");
+   printf("  -u, --users USERS_FILE        Set the path to the pgvictoria_users.conf file\n");
+   printf("  -H, --host HOST               Set the PostgreSQL host (default: 127.0.0.1)\n");
+   printf("  -P, --port PORT               Set the PostgreSQL port (default: 5432)\n");
+   printf("  -U, --user USER               Set the database user (default: postgres)\n");
+   printf("  -W, --password PASSWORD       Set the database password\n");
+   printf("  -pg, --pg PG_VERSION          Override the baseline version to compare against (14-19)\n");
+   printf("  -f, --format FORMAT           Report format: text|html|md (default: text)\n");
+   printf("  -o, --output OUTPUT_FILE      Write the report to OUTPUT_FILE (required)\n");
+   printf("  -V, --version                 Display version information\n");
+   printf("  -?, --help                    Display help\n");
    printf("\n");
    printf("pgvictoria: %s\n", PGVICTORIA_HOMEPAGE);
    printf("Report bugs: %s\n", PGVICTORIA_ISSUES);
@@ -119,6 +128,8 @@ main(int argc, char** argv)
    char* user = NULL;
    char* password = NULL;
    int override_version = 0;
+   enum pgvictoria_output_format output_format = PGVICTORIA_OUTPUT_TEXT;
+   char* output_file = NULL;
 
    cli_option options[] = {
       {"c", "config", true},
@@ -130,13 +141,15 @@ main(int argc, char** argv)
       {"U", "user", true},
       {"W", "password", true},
       {"pg", "pg", true},
+      {"f", "format", true},
+      {"o", "output", true},
    };
 
    struct pgvictoria_command command_table[] = {
       {
          .command = "report",
          .subcommand = "",
-         .accepted_argument_count = {0, 1, 2},
+         .accepted_argument_count = {0, 1},
          .action = ACTION_REPORT,
          .deprecated = false,
          .log_message = "report",
@@ -207,6 +220,37 @@ main(int argc, char** argv)
             warnx("pgvictoria-cli: Unsupported PostgreSQL version: %s", optarg);
             exit(1);
          }
+      }
+      else if (!strcmp(optname, "f") || !strcmp(optname, "format"))
+      {
+         /* Select the output format; honored in both online and file mode. */
+         if (!strcmp(optarg, "text"))
+         {
+            output_format = PGVICTORIA_OUTPUT_TEXT;
+         }
+         else if (!strcmp(optarg, "html"))
+         {
+            output_format = PGVICTORIA_OUTPUT_HTML;
+         }
+         else if (!strcmp(optarg, "md") || !strcmp(optarg, "markdown"))
+         {
+            output_format = PGVICTORIA_OUTPUT_MD;
+         }
+         else
+         {
+            warnx("pgvictoria-cli: Unsupported output format: %s (expected text|html|md)", optarg);
+            exit(1);
+         }
+      }
+      else if (!strcmp(optname, "o") || !strcmp(optname, "output"))
+      {
+         /* Destination path for the report; honored in both online and file mode. */
+         if (strlen(optarg) >= MAX_PATH)
+         {
+            warnx("pgvictoria-cli: Invalid or excessively long output path");
+            exit(1);
+         }
+         output_file = optarg;
       }
       else if (!strcmp(optname, "V") || !strcmp(optname, "version"))
       {
@@ -354,9 +398,15 @@ main(int argc, char** argv)
 
    if (parsed.cmd->action == ACTION_REPORT)
    {
+      if (output_file == NULL || output_file[0] == '\0')
+      {
+         warnx("pgvictoria-cli: -o/--output is required");
+         goto error;
+      }
+
       if (parsed.args[0] != NULL)
       {
-         if (pgvictoria_report_file(parsed.args[0], parsed.args[1], override_version))
+         if (pgvictoria_report_file(parsed.args[0], output_format, output_file, override_version))
          {
             warnx("pgvictoria-cli: Failed to generate file report");
             goto error;
@@ -364,7 +414,7 @@ main(int argc, char** argv)
       }
       else
       {
-         if (pgvictoria_report_online(0))
+         if (pgvictoria_report_online(0, output_format, output_file))
          {
             warnx("pgvictoria-cli: Failed to generate report");
             goto error;

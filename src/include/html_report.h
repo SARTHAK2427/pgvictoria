@@ -29,17 +29,19 @@
 #ifndef PGVICTORIA_HTML_REPORT_H
 #define PGVICTORIA_HTML_REPORT_H
 
+#include <deque.h>
 #include <pgvictoria.h>
 #include <report.h>
 
 /**
  * Generate a beautifully formatted HTML report from difference items.
- * @param filename The configuration filename analyzed.
  * @param output_html_path The destination path of the HTML file.
  * @param version The resolved PostgreSQL version.
- * @param head The linked list of comparison results.
+ * @param items The deque of comparison results.
+ * @param scope Human-readable description of what was audited (e.g. "Online Mode"
+ *              or "File Mode: <path>"), recorded in the report metadata.
  * @return 0 upon success, otherwise 1.
  */
-int pgvictoria_generate_html_report(const char* filename, const char* output_html_path, int version, struct pgvictoria_diff_item* head);
+int pgvictoria_generate_html_report(const char* output_html_path, int version, struct deque* items, const char* scope);
 
 #endif

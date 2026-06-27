@@ -27,6 +27,7 @@
  */
 
 /* pgvictoria */
+#include <deque.h>
 #include <html_report.h>
 #include <utils.h>
 
@@ -39,17 +40,9 @@
 #include <libxml/HTMLtree.h>
 
 int
-pgvictoria_generate_html_report(const char* filename, const char* output_html_path, int version, struct pgvictoria_diff_item* head)
+pgvictoria_generate_html_report(const char* output_html_path, int version, struct deque* items, const char* scope)
 {
-   char* parent_dir = pgvictoria_get_parent_dir(output_html_path);
-   if (parent_dir)
-   {
-      if (strlen(parent_dir) > 0 && strcmp(parent_dir, ".") != 0 && strcmp(parent_dir, "..") != 0)
-      {
-         pgvictoria_mkdir(parent_dir);
-      }
-      free(parent_dir);
-   }
+   pgvictoria_mkdir_parent(output_html_path);
 
    /* Create HTML Document */
    htmlDocPtr doc = htmlNewDoc(NULL, NULL);
@@ -187,9 +180,12 @@ pgvictoria_generate_html_report(const char* filename, const char* output_html_pa
    xmlNodePtr metadata_div = xmlNewChild(container, NULL, BAD_CAST "div", NULL);
    xmlNewProp(metadata_div, BAD_CAST "class", BAD_CAST "metadata");
 
-   char source_meta[512];
-   pgvictoria_snprintf(source_meta, sizeof(source_meta), "Source File: %s", filename);
-   xmlNewChild(metadata_div, NULL, BAD_CAST "span", BAD_CAST source_meta);
+   if (scope)
+   {
+      char scope_meta[MAX_PATH + 32];
+      pgvictoria_snprintf(scope_meta, sizeof(scope_meta), "Report Scope: %s", scope);
+      xmlNewChild(metadata_div, NULL, BAD_CAST "span", BAD_CAST scope_meta);
+   }
 
    char baseline_meta[128];
    pgvictoria_snprintf(baseline_meta, sizeof(baseline_meta), "Baseline Version: PostgreSQL %d", version);
@@ -217,9 +213,12 @@ pgvictoria_generate_html_report(const char* filename, const char* output_html_pa
    xmlNewChild(thr, NULL, BAD_CAST "th", BAD_CAST "Status");
 
    /* Populate table rows from diff list */
-   struct pgvictoria_diff_item* curr = head;
-   while (curr)
+   struct deque_iterator* it = NULL;
+   pgvictoria_deque_iterator_create(items, &it);
+   while (pgvictoria_deque_iterator_next(it))
    {
+      struct pgvictoria_diff_item* curr = (struct pgvictoria_diff_item*)it->value->data;
+
       const char* disp_key = curr->key;
       const char* def_val = curr->baseline_val;
       const char* value = curr->current_val;
@@ -243,9 +242,8 @@ pgvictoria_generate_html_report(const char* filename, const char* output_html_pa
       xmlNodePtr td_status = xmlNewChild(tr, NULL, BAD_CAST "td", NULL);
       xmlNodePtr span_badge = xmlNewChild(td_status, NULL, BAD_CAST "span", BAD_CAST status_text);
       xmlNewProp(span_badge, BAD_CAST "class", BAD_CAST badge_class);
-
-      curr = curr->next;
    }
+   pgvictoria_deque_iterator_destroy(it);
 
    /* Save document to file */
    int saved_bytes = htmlSaveFileEnc(output_html_path, doc, "UTF-8");

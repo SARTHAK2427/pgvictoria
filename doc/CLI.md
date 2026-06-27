@@ -5,7 +5,7 @@
 ## Usage
 
 ```bash
-pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ COMMAND ]
+pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -f FORMAT ] [ -o OUTPUT_FILE ] [ COMMAND ]
 ```
 
 ## Options
@@ -29,7 +29,13 @@ pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ COMMAND
     Set the database password for authentication.
 
 *   **-pg, --pg PG_VERSION**
-    Override the PostgreSQL baseline version to compare against. Useful in offline file reporting modes when no version can be auto-detected. Valid values are `14` to `18`.
+    Override the PostgreSQL baseline version to compare against. Useful in offline file reporting modes when no version can be auto-detected. Valid values are `14` to `19`.
+
+*   **-f, --format FORMAT**
+    Select the report format: `text` (default), `html`, or `md` (`markdown` is accepted as a synonym for `md`). Honored in both online and offline modes.
+
+*   **-o, --output OUTPUT_FILE**
+    Write the report to `OUTPUT_FILE` (its parent directory is created if needed). Honored in both modes and required for every format; the `report` command errors without it.
 
 *   **-V, --version**
     Display version information.
@@ -41,26 +47,22 @@ pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ COMMAND
 
 ### report
 
-Generates a configuration comparison report against the target version's default out-of-the-box configuration baseline.
+Generates a configuration comparison report against the target version's default out-of-the-box configuration baseline. The format (`-f`) and destination (`-o`) flags work identically in both modes; the only difference is the data source.
 
 ```bash
-pgvictoria-cli report [input_config_file] [output_html_path]
+pgvictoria-cli [ -f FORMAT ] [ -o OUTPUT_FILE ] report [ input_config_file ]
 ```
 
-#### Online Mode (Zero Arguments)
-Runs a connection-based configuration scan against the target PostgreSQL server.
+#### Online Mode (no positional argument)
+Runs a connection-based configuration scan against the target PostgreSQL server (via `SHOW ALL`). The connection settings come from `-c`/`-H`/`-P`/`-U`/`-W`. The report is always written to the `-o` path; choose the format with `-f` (`text` by default, or `html`/`md`).
 ```bash
-pgvictoria-cli -c pgvictoria-cli.conf report
+pgvictoria-cli -c pgvictoria-cli.conf -o report.txt report
+pgvictoria-cli -c pgvictoria-cli.conf -f md -o report.md report
 ```
 
-#### Offline File Mode (One Argument)
-Runs a static scan comparing `<input_config_file>` against the detected version default, printing the diff report directly to `stdout`.
+#### Offline File Mode (one positional argument)
+Runs a static scan comparing `<input_config_file>` against the detected (or `-pg` overridden) version default. The flags are the same as online mode.
 ```bash
-pgvictoria-cli -c pgvictoria-cli.conf report /etc/postgresql/18/main/postgresql.conf
-```
-
-#### Programmatic HTML Report (Two Arguments)
-Runs a static scan comparing `<input_config_file>` against the detected/overridden version default, generating a clean, high-contrast, professional monochrome HTML report written to `<output_html_path>`.
-```bash
-pgvictoria-cli -c pgvictoria-cli.conf report -pg 18 /etc/postgresql/18/main/postgresql.conf diff_report.html
+pgvictoria-cli -o report.txt report /etc/postgresql/18/main/postgresql.conf
+pgvictoria-cli -pg 18 -f md -o report.md report /etc/postgresql/18/main/postgresql.conf
 ```

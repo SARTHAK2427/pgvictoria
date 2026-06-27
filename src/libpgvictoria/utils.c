@@ -3486,6 +3486,20 @@ pgvictoria_get_parent_dir(const char* path)
    return parent_dir;
 }
 
+void
+pgvictoria_mkdir_parent(const char* path)
+{
+   char* parent_dir = pgvictoria_get_parent_dir(path);
+   if (parent_dir)
+   {
+      if (strlen(parent_dir) > 0 && strcmp(parent_dir, ".") != 0 && strcmp(parent_dir, "..") != 0)
+      {
+         pgvictoria_mkdir(parent_dir);
+      }
+      free(parent_dir);
+   }
+}
+
 int
 pgvictoria_normalize_path(char* directory_path, char* filename, char* default_path, char* path_buffer, size_t buffer_size)
 {

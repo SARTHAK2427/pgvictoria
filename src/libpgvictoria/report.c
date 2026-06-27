@@ -27,6 +27,7 @@
  */
 
 #include <report.h>
+#include <deque.h>
 #include <html_report.h>
 #include <markdown.h>
 #include <security.h>
@@ -201,16 +202,30 @@ trim_and_extract_key_value(char* line, char* key, char* value)
    value[val_len] = '\0';
 }
 
+/*
+ * Classify a single key/value against the baseline (Default / Modified / Custom)
+ * and append it as a diff item to the report deque. Shared by both the file and
+ * online datasources so the report is built identically regardless of source.
+ */
 static void
-pgvictoria_report_print_diff(char* key, char* val, struct json* baseline)
+report_add_diff_item(struct deque* items, struct json* baseline, char* key, char* val)
 {
+   /*
+    * SHOW ALL returns an empty GUC setting as a zero-length column, which the
+    * message decoder turns into a NULL data pointer. Coerce it to "" so the
+    * comparison and the rendered value are well-defined (an empty string rather
+    * than the undefined behaviour of printing a NULL pointer with "%s").
+    */
+   const char* cur_val = val ? val : "";
+
    enum value_type type;
    char* matched_key = NULL;
    uintptr_t baseline_val_ptr = pgvictoria_json_get_typed_case_insensitive(baseline, key, &type, &matched_key);
+
    const char* disp_key = matched_key ? matched_key : key;
    const char* def_val = "-";
+   const char* status_text = "Custom";
    char* default_val_str = NULL;
-   bool is_default = false;
 
    if (baseline_val_ptr)
    {
@@ -223,19 +238,40 @@ pgvictoria_report_print_diff(char* key, char* val, struct json* baseline)
             if (default_val_str)
             {
                def_val = default_val_str;
-               if (strcmp(default_val_str, val) == 0)
+               if (strcmp(default_val_str, cur_val) == 0)
                {
-                  is_default = true;
+                  status_text = "Default";
+               }
+               else
+               {
+                  status_text = "Modified";
                }
             }
             pgvictoria_value_destroy(v);
          }
       }
    }
-
-   if (!is_default)
+   else if (pgvictoria_json_contains_key(baseline, key))
    {
-      printf("%-40s | %-20s | %-20s\n", disp_key, def_val, val);
+      /*
+       * The key is in the baseline but its default is the empty string (e.g.
+       * archive_cleanup_command). json_get_typed returns 0 for an empty value,
+       * which is indistinguishable from "absent", so fall back to contains_key
+       * and classify against an empty default instead of mislabelling it Custom.
+       */
+      def_val = "";
+      status_text = (cur_val[0] == '\0') ? "Default" : "Modified";
+   }
+
+   struct pgvictoria_diff_item* item = malloc(sizeof(struct pgvictoria_diff_item));
+   if (item)
+   {
+      snprintf(item->key, sizeof(item->key), "%s", disp_key);
+      snprintf(item->baseline_val, sizeof(item->baseline_val), "%s", def_val);
+      snprintf(item->current_val, sizeof(item->current_val), "%s", cur_val);
+      snprintf(item->status, sizeof(item->status), "%s", status_text);
+
+      pgvictoria_deque_add(items, NULL, (uintptr_t)item, ValueMem);
    }
 
    if (default_val_str)
@@ -244,8 +280,102 @@ pgvictoria_report_print_diff(char* key, char* val, struct json* baseline)
    }
 }
 
+/*
+ * Render the diff deque as a plain-text table to the given stream. Shared by both
+ * the file and online datasources; mode_desc fills the report header (e.g. "Online
+ * Mode" or "File Mode: <path>"). Rows whose status is "Default" are hidden.
+ */
+static void
+report_print_text(FILE* out, struct deque* items, int version, const char* mode_desc)
+{
+   fprintf(out, "\nPostgreSQL %d Configuration Report (%s)\n", version, mode_desc);
+   char* os_name = NULL;
+   int k_major = 0, k_minor = 0, k_patch = 0;
+   if (pgvictoria_os_kernel_version(&os_name, &k_major, &k_minor, &k_patch) == 0)
+   {
+      fprintf(out, "System: %s %d.%d.%d\n", os_name, k_major, k_minor, k_patch);
+      free(os_name);
+   }
+   fprintf(out, "=================================================================================\n");
+   fprintf(out, "%-40s | %-20s | %-20s\n", "Key", "Default", "Current");
+   fprintf(out, "---------------------------------------------------------------------------------\n");
+
+   struct deque_iterator* it = NULL;
+   pgvictoria_deque_iterator_create(items, &it);
+   while (pgvictoria_deque_iterator_next(it))
+   {
+      struct pgvictoria_diff_item* row = (struct pgvictoria_diff_item*)it->value->data;
+
+      if (strcmp(row->status, "Default") != 0)
+      {
+         fprintf(out, "%-40s | %-20s | %-20s\n", row->key, row->baseline_val, row->current_val);
+      }
+   }
+   pgvictoria_deque_iterator_destroy(it);
+   fprintf(out, "=================================================================================\n");
+}
+
+/*
+ * Render the diff deque in the requested format to the requested destination.
+ * Shared by both the file and online datasources after they build their (identical)
+ * deque. An output path (-o) is required for every format; mode_desc fills the
+ * report header/metadata. Returns 0 on success, otherwise 1.
+ */
+static int
+report_render(struct deque* items, int version, enum pgvictoria_output_format format, char* output_file, const char* mode_desc)
+{
+   if (output_file == NULL || output_file[0] == '\0')
+   {
+      /* cli.c enforces this up front; guard the library entry points too. */
+      warnx("pgvictoria-cli: -o/--output is required");
+      return 1;
+   }
+
+   char* resolved_output = NULL;
+   if (pgvictoria_resolve_path(output_file, &resolved_output) != 0 || resolved_output == NULL)
+   {
+      resolved_output = strdup(output_file);
+   }
+
+   int ret = 0;
+
+   if (format == PGVICTORIA_OUTPUT_MD)
+   {
+      ret = pgvictoria_generate_markdown_report(resolved_output, version, items, mode_desc);
+   }
+   else if (format == PGVICTORIA_OUTPUT_HTML)
+   {
+      ret = pgvictoria_generate_html_report(resolved_output, version, items, mode_desc);
+   }
+   else
+   {
+      /* Text to a file: create the parent directory like the renderers do. */
+      pgvictoria_mkdir_parent(resolved_output);
+
+      FILE* out = fopen(resolved_output, "w");
+      if (!out)
+      {
+         warn("pgvictoria-cli: Cannot open output file %s", resolved_output);
+         ret = 1;
+      }
+      else
+      {
+         report_print_text(out, items, version, mode_desc);
+         fclose(out);
+         printf("Report successfully generated to %s\n", resolved_output);
+      }
+   }
+
+   if (resolved_output)
+   {
+      free(resolved_output);
+   }
+
+   return ret;
+}
+
 int
-pgvictoria_report_online(int server)
+pgvictoria_report_online(int server, enum pgvictoria_output_format format, char* output_file)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
    struct server* srv;
@@ -328,27 +458,21 @@ pgvictoria_report_online(int server)
       goto error;
    }
 
-   printf("\nPostgreSQL %d Configuration Report (Online Mode)\n", version);
-   char* os_name = NULL;
-   int k_major = 0, k_minor = 0, k_patch = 0;
-   if (pgvictoria_os_kernel_version(&os_name, &k_major, &k_minor, &k_patch) == 0)
-   {
-      printf("System: %s %d.%d.%d\n", os_name, k_major, k_minor, k_patch);
-      free(os_name);
-   }
-   printf("=================================================================================\n");
-   printf("%-40s | %-20s | %-20s\n", "Key", "Default", "Current");
-   printf("---------------------------------------------------------------------------------\n");
+   /* Build the source-agnostic diff deque from the live configuration */
+   struct deque* items = NULL;
+   pgvictoria_deque_create(false, &items);
 
    struct tuple* curr = all_response->tuples;
    while (curr)
    {
-      pgvictoria_report_print_diff(curr->data[0], curr->data[1], baseline);
+      report_add_diff_item(items, baseline, curr->data[0], curr->data[1]);
       curr = curr->next;
    }
-   printf("=================================================================================\n");
 
-   ret = 0;
+   /* Render the deque in the requested format */
+   ret = report_render(items, version, format, output_file, "Online Mode");
+
+   pgvictoria_deque_destroy(items);
 
 error:
    if (msg)
@@ -422,13 +546,12 @@ detect_pg_version_from_file(const char* filename)
 }
 
 int
-pgvictoria_report_file(char* filename, char* output_html_path, int override_version)
+pgvictoria_report_file(char* filename, enum pgvictoria_output_format format, char* output_file, int override_version)
 {
    int version = 0;
    struct json* baseline = NULL;
    FILE* file = NULL;
    char* resolved_filename = NULL;
-   char* resolved_output = NULL;
    int ret = 0;
 
    if (filename == NULL || strlen(filename) == 0 || strlen(filename) >= MAX_PATH)
@@ -463,21 +586,6 @@ pgvictoria_report_file(char* filename, char* output_html_path, int override_vers
       return 1;
    }
 
-   if (output_html_path != NULL)
-   {
-      if (strlen(output_html_path) == 0 || strlen(output_html_path) >= MAX_PATH)
-      {
-         warnx("pgvictoria-cli: Invalid or excessively long output path");
-         free(resolved_filename);
-         return 1;
-      }
-
-      if (pgvictoria_resolve_path(output_html_path, &resolved_output) != 0 || resolved_output == NULL)
-      {
-         resolved_output = strdup(output_html_path);
-      }
-   }
-
    if (pgvictoria_is_version_supported(override_version))
    {
       version = override_version;
@@ -499,10 +607,6 @@ pgvictoria_report_file(char* filename, char* output_html_path, int override_vers
    {
       warnx("No baseline available for PostgreSQL version %d", version);
       free(resolved_filename);
-      if (resolved_output)
-      {
-         free(resolved_output);
-      }
       return 1;
    }
 
@@ -512,16 +616,12 @@ pgvictoria_report_file(char* filename, char* output_html_path, int override_vers
       warn("pgvictoria-cli: Cannot open configuration file %s", resolved_filename);
       pgvictoria_json_destroy(baseline);
       free(resolved_filename);
-      if (resolved_output)
-      {
-         free(resolved_output);
-      }
       return 1;
    }
 
    /* Parse file and build comparison list */
-   struct pgvictoria_diff_item* head = NULL;
-   struct pgvictoria_diff_item* tail = NULL;
+   struct deque* items = NULL;
+   pgvictoria_deque_create(false, &items);
 
    char line[1024];
    char key[128];
@@ -535,124 +635,22 @@ pgvictoria_report_file(char* filename, char* output_html_path, int override_vers
 
       if (strlen(key) > 0 && strlen(value) > 0)
       {
-         enum value_type type;
-         char* matched_key = NULL;
-         uintptr_t baseline_val_ptr = pgvictoria_json_get_typed_case_insensitive(baseline, key, &type, &matched_key);
-
-         const char* disp_key = matched_key ? matched_key : key;
-         const char* def_val = "-";
-         const char* status_text = "Custom";
-         char* default_val_str = NULL;
-
-         if (baseline_val_ptr)
-         {
-            struct value* v = NULL;
-            if (!pgvictoria_value_create(type, baseline_val_ptr, &v))
-            {
-               if (v)
-               {
-                  default_val_str = pgvictoria_value_to_string(v, FORMAT_TEXT, NULL, 0);
-                  if (default_val_str)
-                  {
-                     def_val = default_val_str;
-                     if (strcmp(default_val_str, value) == 0)
-                     {
-                        status_text = "Default";
-                     }
-                     else
-                     {
-                        status_text = "Modified";
-                     }
-                  }
-                  pgvictoria_value_destroy(v);
-               }
-            }
-         }
-
-         /* Create a diff item */
-         struct pgvictoria_diff_item* item = malloc(sizeof(struct pgvictoria_diff_item));
-         if (item)
-         {
-            snprintf(item->key, sizeof(item->key), "%s", disp_key);
-            snprintf(item->baseline_val, sizeof(item->baseline_val), "%s", def_val);
-            snprintf(item->current_val, sizeof(item->current_val), "%s", value);
-            snprintf(item->status, sizeof(item->status), "%s", status_text);
-            item->next = NULL;
-
-            if (!head)
-            {
-               head = item;
-               tail = item;
-            }
-            else
-            {
-               tail->next = item;
-               tail = item;
-            }
-         }
-
-         if (default_val_str)
-         {
-            free(default_val_str);
-         }
+         report_add_diff_item(items, baseline, key, value);
       }
    }
 
    fclose(file);
    pgvictoria_json_destroy(baseline);
 
-   if (resolved_output != NULL)
-   {
-      if (pgvictoria_ends_with(resolved_output, ".md") || pgvictoria_ends_with(resolved_output, ".markdown"))
-      {
-         ret = pgvictoria_generate_markdown_report(resolved_filename, resolved_output, version, head);
-      }
-      else
-      {
-         ret = pgvictoria_generate_html_report(resolved_filename, resolved_output, version, head);
-      }
-   }
-   else
-   {
-      /* Output plain text directly to console */
-      printf("\nPostgreSQL %d Configuration Report (File Mode: %s)\n", version, resolved_filename);
-      char* os_name = NULL;
-      int k_major = 0, k_minor = 0, k_patch = 0;
-      if (pgvictoria_os_kernel_version(&os_name, &k_major, &k_minor, &k_patch) == 0)
-      {
-         printf("System: %s %d.%d.%d\n", os_name, k_major, k_minor, k_patch);
-         free(os_name);
-      }
-      printf("=================================================================================\n");
-      printf("%-40s | %-20s | %-20s\n", "Key", "Default", "Current");
-      printf("---------------------------------------------------------------------------------\n");
+   char mode_desc[MAX_PATH + 16];
+   snprintf(mode_desc, sizeof(mode_desc), "File Mode: %s", resolved_filename);
 
-      struct pgvictoria_diff_item* curr = head;
-      while (curr)
-      {
-         if (strcmp(curr->status, "Default") != 0)
-         {
-            printf("%-40s | %-20s | %-20s\n", curr->key, curr->baseline_val, curr->current_val);
-         }
-         curr = curr->next;
-      }
-      printf("=================================================================================\n");
-   }
+   ret = report_render(items, version, format, output_file, mode_desc);
 
    /* Cleanup comparison list */
-   struct pgvictoria_diff_item* curr = head;
-   while (curr)
-   {
-      struct pgvictoria_diff_item* next = curr->next;
-      free(curr);
-      curr = next;
-   }
+   pgvictoria_deque_destroy(items);
 
    free(resolved_filename);
-   if (resolved_output)
-   {
-      free(resolved_output);
-   }
 
    return ret;
 }

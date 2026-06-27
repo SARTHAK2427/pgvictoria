@@ -11,7 +11,7 @@ Command line interface for pgvictoria
 SYNOPSIS
 ========
 
-pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -H HOST ] [ -P PORT ] [ -U USER ] [ -W PASSWORD ] [ -V ] [ -? ] [ COMMAND ]
+pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -H HOST ] [ -P PORT ] [ -U USER ] [ -W PASSWORD ] [ -f FORMAT ] [ -o OUTPUT_FILE ] [ -V ] [ -? ] [ COMMAND ]
 
 DESCRIPTION
 ===========
@@ -28,7 +28,7 @@ OPTIONS
   Set the path to the pgvictoria_users.conf configuration file. Default is /etc/pgvictoria/pgvictoria_users.conf.
 
 -pg PG_VERSION
-  Override the PostgreSQL baseline version to compare against. Valid range is 14 to 18.
+  Override the PostgreSQL baseline version to compare against. Valid range is 14 to 19.
 
 -H, --host HOST
   Set the host name or IP address of the target PostgreSQL server. Default is 127.0.0.1.
@@ -42,6 +42,12 @@ OPTIONS
 -W, --password PASSWORD
   Set the database password for authentication.
 
+-f, --format FORMAT
+  Select the report format: text (default), html, or md (markdown is accepted as a synonym for md). Honored in both online and offline modes.
+
+-o, --output OUTPUT_FILE
+  Write the report to OUTPUT_FILE (its parent directory is created if needed). Honored in both modes and required for every format; the report command errors without it.
+
 -V, --version
   Display version information.
 
@@ -51,26 +57,26 @@ OPTIONS
 COMMANDS
 ========
 
-report [input_config_file] [output_html_path]
-  Generate a configuration report.
-  If no arguments are provided, it performs a connection-based live scan of the target PostgreSQL server.
-  If one argument [input_config_file] is provided, it parses the configuration file statically and prints a plain text diff to stdout.
-  If two arguments are provided, it generates a professional, monochrome, print-friendly HTML report and writes it to [output_html_path].
+report [input_config_file]
+  Generate a configuration report. The -f (format) and -o (output) flags apply identically to both modes.
+  With no positional argument, it performs a connection-based live scan of the target PostgreSQL server (SHOW ALL).
+  With one argument [input_config_file], it parses that configuration file statically.
+  The report is always written to the -o path (required); choose the format with -f (text by default, or html/md).
 
 EXAMPLES
 ========
 
 Perform a live configuration report scan:
 
-  $ pgvictoria-cli -c pgvictoria-cli.conf report
+  $ pgvictoria-cli -c pgvictoria-cli.conf -o report.txt report
 
-Perform a static config file comparison and print results:
+Perform a static config file comparison:
 
-  $ pgvictoria-cli -c pgvictoria-cli.conf report /etc/postgresql/18/main/postgresql.conf
+  $ pgvictoria-cli -c pgvictoria-cli.conf -o report.txt report /etc/postgresql/18/main/postgresql.conf
 
 Generate an HTML configuration report for PostgreSQL 18:
 
-  $ pgvictoria-cli -c pgvictoria-cli.conf report -pg 18 /etc/postgresql/18/main/postgresql.conf diff_report.html
+  $ pgvictoria-cli -c pgvictoria-cli.conf -pg 18 -f html -o diff_report.html report /etc/postgresql/18/main/postgresql.conf
 
 REPORTING BUGS
 ==============

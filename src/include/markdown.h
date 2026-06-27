@@ -29,17 +29,19 @@
 #ifndef PGVICTORIA_MARKDOWN_H
 #define PGVICTORIA_MARKDOWN_H
 
+#include <deque.h>
 #include <pgvictoria.h>
 #include <report.h>
 
 /**
  * Generate a clean, readable Markdown report from difference items.
- * @param filename The configuration filename analyzed.
  * @param output_md_path The destination path of the Markdown file.
  * @param version The resolved PostgreSQL version.
- * @param head The linked list of comparison results.
+ * @param items The deque of comparison results.
+ * @param scope Human-readable description of what was audited (e.g. "Online Mode"
+ *              or "File Mode: <path>"), recorded in the report metadata.
  * @return 0 upon success, otherwise 1.
  */
-int pgvictoria_generate_markdown_report(const char* filename, const char* output_md_path, int version, struct pgvictoria_diff_item* head);
+int pgvictoria_generate_markdown_report(const char* output_md_path, int version, struct deque* items, const char* scope);
 
 #endif

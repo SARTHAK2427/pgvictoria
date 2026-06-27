@@ -1097,6 +1097,17 @@ char*
 pgvictoria_get_parent_dir(const char* path);
 
 /**
+ * Create the parent directory of a path
+ *
+ * Creates the directory containing path. No-op when the parent resolves to the
+ * current ("." / no slash) or parent ("..") directory.
+ *
+ * @param path The output file path whose parent directory should be created
+ */
+void
+pgvictoria_mkdir_parent(const char* path);
+
+/**
  * Extract the user name and database from a message
  * @param msg The message
  * @param username The resulting user name

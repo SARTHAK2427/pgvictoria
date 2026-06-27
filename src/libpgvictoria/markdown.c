@@ -27,6 +27,7 @@
  */
 
 /* pgvictoria */
+#include <deque.h>
 #include <markdown.h>
 #include <utils.h>
 
@@ -36,17 +37,9 @@
 #include <string.h>
 
 int
-pgvictoria_generate_markdown_report(const char* filename, const char* output_md_path, int version, struct pgvictoria_diff_item* head)
+pgvictoria_generate_markdown_report(const char* output_md_path, int version, struct deque* items, const char* scope)
 {
-   char* parent_dir = pgvictoria_get_parent_dir(output_md_path);
-   if (parent_dir)
-   {
-      if (strlen(parent_dir) > 0 && strcmp(parent_dir, ".") != 0 && strcmp(parent_dir, "..") != 0)
-      {
-         pgvictoria_mkdir(parent_dir);
-      }
-      free(parent_dir);
-   }
+   pgvictoria_mkdir_parent(output_md_path);
 
    FILE* f = fopen(output_md_path, "w");
    if (!f)
@@ -56,7 +49,10 @@ pgvictoria_generate_markdown_report(const char* filename, const char* output_md_
 
    fprintf(f, "# PostgreSQL %d Configuration Difference Report\n\n", version);
 
-   fprintf(f, "- **Source File:** `%s`\n", filename);
+   if (scope)
+   {
+      fprintf(f, "- **Report Scope:** `%s`\n", scope);
+   }
    fprintf(f, "- **Baseline Version:** PostgreSQL %d\n", version);
 
    char* os_name = NULL;
@@ -71,18 +67,20 @@ pgvictoria_generate_markdown_report(const char* filename, const char* output_md_
    fprintf(f, "| Configuration Key | Baseline Default | Current Value | Status |\n");
    fprintf(f, "| :--- | :--- | :--- | :--- |\n");
 
-   struct pgvictoria_diff_item* curr = head;
-   while (curr)
+   struct deque_iterator* it = NULL;
+   pgvictoria_deque_iterator_create(items, &it);
+   while (pgvictoria_deque_iterator_next(it))
    {
+      struct pgvictoria_diff_item* curr = (struct pgvictoria_diff_item*)it->value->data;
+
       /* Wrap values in backticks for clean markdown coding format */
       fprintf(f, "| `%s` | `%s` | `%s` | **%s** |\n",
               curr->key,
               curr->baseline_val,
               curr->current_val,
               curr->status);
-
-      curr = curr->next;
    }
+   pgvictoria_deque_iterator_destroy(it);
 
    fclose(f);
    printf("Report successfully generated to %s\n", output_md_path);
