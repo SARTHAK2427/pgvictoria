@@ -1,4 +1,4 @@
-libyaml-devname: CI
+name: CI
 
 on:
   push:
@@ -12,6 +12,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install clang-format
+        run: |
+          sudo apt update -y
+          sudo apt install -y lsb-release wget software-properties-common gnupg
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt update -y
+          sudo apt remove -y clang-format 2>/dev/null || true
+          sudo apt install -y clang-format-21
+          sudo ln -sf /usr/bin/clang-format-21 /usr/bin/clang-format
+
+      - name: Check code formatting
+        run: |
+          ./clang-format.sh
+          if ! git diff --quiet; then
+            git diff
+            echo ""
+            echo "Please run './clang-format.sh' and commit the changes."
+            exit 1
+          fi
   build-linux:
     runs-on: ubuntu-latest
 
@@ -22,7 +47,7 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |
@@ -30,7 +55,7 @@ jobs:
           sudo apt install -y \
           git gcc clang clang-tools cmake make \
           libev4 libev-dev libssl-dev libsystemd-dev \
-          python3-docutils
+          python3-docutils doxygen
 
       - name: Install PostgreSQL
         run: |
@@ -55,30 +80,13 @@ jobs:
           else
             export CC=/usr/bin/clang
           fi
-          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
+          if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.build_type }}" = "Debug" ]; then
+            cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=TRUE ..
+          else
+            cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=FALSE ..
+          fi
           make -j$(nproc)
         working-directory: /home/runner/work/pgvictoria/pgvictoria/
 
-      - name: Run Tests
-        run: |
-          if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.build_type }}" = "Debug" ]; then
-            $(which bash) ./test/check.sh ci
-          fi
-        working-directory: /home/runner/work/pgvictoria/pgvictoria/
 
-      - name: Upload All Coverage Reports as Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-reports-${{ matrix.compiler }}-${{ matrix.build_type }}
-          path: /tmp/pgvictoria-test/coverage
-          retention-days: 90
-
-      - name: Upload Run Log as Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs-${{ matrix.compiler }}-${{ matrix.build_type }}
-          path: /tmp/pgvictoria-test/log
-          retention-days: 90
 

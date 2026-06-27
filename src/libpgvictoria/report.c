@@ -90,8 +90,6 @@ pgvictoria_json_get_typed_case_insensitive(struct json* baseline, char* key, enu
    return 0;
 }
 
-
-
 static int
 detect_pg_version(void)
 {
@@ -131,7 +129,6 @@ trim_and_extract_key_value(char* line, char* key, char* value)
    char* end_val;
    int key_len;
    int val_len;
-
    /* Skip leading whitespace */
    while (*p == ' ' || *p == '\t')
    {

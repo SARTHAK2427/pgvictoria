@@ -57,8 +57,7 @@ struct pg_version_baseline
 
 static const char* search_dirs[] = {
    "/etc/pgvictoria/baselines",
-   "./baselines"
-};
+   "./baselines"};
 
 /**
  * Helper function to retrieve supported PostgreSQL versions and baseline JSON strings

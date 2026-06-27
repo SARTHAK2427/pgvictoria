@@ -51,8 +51,7 @@ struct pgvictoria_diff_item
  * Output format for the configuration report (text, HTML, or Markdown). Selected
  * with -f/--format in both online and file mode.
  */
-enum pgvictoria_output_format
-{
+enum pgvictoria_output_format {
    PGVICTORIA_OUTPUT_TEXT = 0,
    PGVICTORIA_OUTPUT_HTML,
    PGVICTORIA_OUTPUT_MD,
