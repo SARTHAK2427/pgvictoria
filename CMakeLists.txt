@@ -140,6 +140,12 @@ if (DOXYGEN_FOUND)
   message(status "Doxygen found: ${DOXYGEN_EXECUTABLE}")
 endif()
 
+find_package(Pandoc)
+
+if (PANDOC_FOUND)
+  message(STATUS "pandoc found: ${PANDOC_EXECUTABLE}")
+endif()
+
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src/")
 
 add_subdirectory(src)
