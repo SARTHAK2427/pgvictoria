@@ -1,4 +1,6 @@
-# CLI Reporting Engine
+\newpage
+
+# CLI reporting engine
 
 The `pgvictoria-cli` report command parses target PostgreSQL configuration parameters and compares them against standard out-of-the-box baselines. This enables rapid detection of configurations that deviate from default values, streamlining performance audits and tuning tasks.
 

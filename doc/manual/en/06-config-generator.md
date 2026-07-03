@@ -1,4 +1,6 @@
-# Configuration Generator
+\newpage
+
+# Configuration generator
 
 `pgvictoria-config` is a utility tool that helps users generate and manage their `pgvictoria` configuration files. It is particularly useful for new users to set up a base configuration or for automation scripts to modify existing settings safely.
 

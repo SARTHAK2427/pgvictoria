@@ -1,0 +1,27 @@
+[pgvictoria]: https://pgvictoria.github.io/
+[pgvictoria_repo]: https://github.com/pgvictoria/pgvictoria
+[postgresql]: https://www.postgresql.org
+[yum]: https://yum.postgresql.org
+[fedora]: https://getfedora.org/
+[freebsd]: https://www.freebsd.org/
+[rocky]: https://rockylinux.org/
+[gcc]: https://gcc.gnu.org
+[cmake]: https://cmake.org
+[make]: https://www.gnu.org/software/make/
+[libev]: http://software.schmorp.de/pkg/libev.html
+[openssl]: http://www.openssl.org/
+[libxml2]: https://gitlab.gnome.org/GNOME/libxml2
+[rst2man]: https://docutils.sourceforge.io/
+[pandoc]: https://pandoc.org/
+[texlive]: https://www.tug.org/texlive/
+[clang]: https://clang.llvm.org/
+[ART_paper]: http://www-db.in.tum.de/~leis/papers/ART.pdf
+[libart]: https://github.com/armon/libart
+
+[ask]: https://github.com/pgvictoria/pgvictoria/discussions
+[issue]: https://github.com/pgvictoria/pgvictoria/issues
+[request]: https://github.com/pgvictoria/pgvictoria/issues
+[submission]: https://github.com/pgvictoria/pgvictoria/pulls
+[conduct]: https://github.com/pgvictoria/pgvictoria/blob/main/CODE_OF_CONDUCT.md
+[star]: https://github.com/pgvictoria/pgvictoria/stargazers
+[license]: https://opensource.org/licenses/BSD-3-Clause
