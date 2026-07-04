@@ -81,11 +81,17 @@ jobs:
             export CC=/usr/bin/clang
           fi
           if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.build_type }}" = "Debug" ]; then
-            cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=TRUE ..
+            cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=TRUE -Dcheck=TRUE ..
           else
-            cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=FALSE ..
+            cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=FALSE -Dcheck=TRUE ..
           fi
           make -j$(nproc)
+        working-directory: /home/runner/work/pgvictoria/pgvictoria/
+
+      - name: Run Tests
+        run: |
+          export PGVICTORIA_TEST_NO_BUILD=1
+          ./test/check.sh
         working-directory: /home/runner/work/pgvictoria/pgvictoria/
 
 

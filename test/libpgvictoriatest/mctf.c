@@ -1,0 +1,887 @@
+/*
+ * Copyright (C) 2026 The pgvictoria community
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list
+ * of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this
+ * list of conditions and the following disclaimer in the documentation and/or other
+ * materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may
+ * be used to endorse or promote products derived from this software without specific
+ * prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+ * THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+ * TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
+
+#include <mctf.h>
+#include <mctf_logslice.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <time.h>
+
+extern char** environ;
+
+/* Global error number */
+int mctf_errno = 0;
+
+/* Global error message */
+char* mctf_errmsg = NULL;
+
+/* Global test runner */
+static mctf_runner_t g_runner = {0};
+static bool g_initialized = false;
+
+/* Optional log file for test runner output */
+static FILE* mctf_log_file = NULL;
+
+static void
+mctf_vlogf(FILE* out, const char* fmt, va_list ap)
+{
+   if (out != NULL)
+   {
+      vfprintf(out, fmt, ap);
+      fflush(out);
+   }
+}
+
+static void
+mctf_logf(const char* fmt, ...)
+{
+   va_list ap;
+
+   /* Always log to stdout */
+   va_start(ap, fmt);
+   mctf_vlogf(stdout, fmt, ap);
+   va_end(ap);
+
+   /* Mirror to log file if configured */
+   if (mctf_log_file != NULL)
+   {
+      va_start(ap, fmt);
+      mctf_vlogf(mctf_log_file, fmt, ap);
+      va_end(ap);
+   }
+}
+
+static void
+mctf_log_errorf(const char* fmt, ...)
+{
+   va_list ap;
+
+   /* Always log to stderr */
+   va_start(ap, fmt);
+   mctf_vlogf(stderr, fmt, ap);
+   va_end(ap);
+
+   /* Mirror to log file if configured */
+   if (mctf_log_file != NULL)
+   {
+      va_start(ap, fmt);
+      mctf_vlogf(mctf_log_file, fmt, ap);
+      va_end(ap);
+   }
+}
+
+void
+mctf_log_environment(void)
+{
+   char** env;
+
+   mctf_logf("=== Test Environment Variables ===\n");
+
+   if (environ == NULL)
+   {
+      mctf_logf("  (no environment variables available)\n\n");
+      return;
+   }
+
+   for (env = environ; *env != NULL; env++)
+   {
+      mctf_logf("  %s\n", *env);
+   }
+
+   mctf_logf("=== End Environment Variables ===\n\n");
+}
+
+int
+mctf_open_log(const char* path)
+{
+   FILE* f;
+
+   if (path == NULL || strlen(path) == 0)
+   {
+      return 1;
+   }
+
+   f = fopen(path, "a");
+   if (f == NULL)
+   {
+      return 1;
+   }
+
+   mctf_log_file = f;
+   return 0;
+}
+
+void
+mctf_close_log(void)
+{
+   if (mctf_log_file != NULL)
+   {
+      fclose(mctf_log_file);
+      mctf_log_file = NULL;
+   }
+}
+
+void
+mctf_init(void)
+{
+   g_initialized = true;
+}
+
+void
+mctf_cleanup(void)
+{
+   mctf_test_t* test = g_runner.tests;
+   while (test)
+   {
+      mctf_test_t* next = test->next;
+      free((void*)test->name);
+      free((void*)test->module);
+      free((void*)test->file);
+      free(test);
+      test = next;
+   }
+
+   /* Free per-test hook records */
+   {
+      mctf_test_hooks_t* h = g_runner.test_hooks;
+      while (h)
+      {
+         mctf_test_hooks_t* next = h->next;
+         free((void*)h->module);
+         free(h);
+         h = next;
+      }
+   }
+
+   /* Free per-module hook records */
+   {
+      mctf_module_hooks_t* h = g_runner.module_hooks;
+      while (h)
+      {
+         mctf_module_hooks_t* next = h->next;
+         free((void*)h->module);
+         free(h);
+         h = next;
+      }
+   }
+
+   if (g_runner.results)
+   {
+      for (size_t i = 0; i < g_runner.result_count; i++)
+      {
+         if (g_runner.results[i].error_message)
+         {
+            free((void*)g_runner.results[i].error_message);
+         }
+      }
+      free(g_runner.results);
+   }
+
+   if (mctf_errmsg)
+   {
+      free(mctf_errmsg);
+      mctf_errmsg = NULL;
+   }
+
+   g_initialized = false;
+   memset(&g_runner, 0, sizeof(g_runner));
+}
+
+/** Internal: register a test with both is_negative and max_elapsed_sec (0 = no limit). */
+static void
+mctf_register_test_with_options(const char* name, const char* module, const char* file,
+                                mctf_test_func_t func, bool is_negative, unsigned int max_elapsed_sec)
+{
+   if (!g_initialized)
+   {
+      mctf_init();
+   }
+
+   mctf_test_t* test = calloc(1, sizeof(mctf_test_t));
+   if (!test)
+   {
+      mctf_log_errorf("MCTF: Failed to allocate memory for test '%s'\n", name);
+      return;
+   }
+
+   test->name = strdup(name);
+   if (!test->name)
+   {
+      mctf_log_errorf("MCTF: Failed to allocate memory for test name '%s'\n", name);
+      free(test);
+      return;
+   }
+
+   test->module = module ? strdup(module) : strdup("unknown");
+   if (!test->module)
+   {
+      mctf_log_errorf("MCTF: Failed to allocate memory for test module '%s'\n", module ? module : "unknown");
+      free((void*)test->name);
+      free(test);
+      return;
+   }
+
+   test->file = file ? strdup(file) : strdup("unknown");
+   if (!test->file)
+   {
+      mctf_log_errorf("MCTF: Failed to allocate memory for test file '%s'\n", file ? file : "unknown");
+      free((void*)test->name);
+      free((void*)test->module);
+      free(test);
+      return;
+   }
+
+   test->func = func;
+   test->is_negative = is_negative;
+   test->max_elapsed_sec = max_elapsed_sec;
+   test->next = NULL;
+
+   if (g_runner.tests == NULL)
+   {
+      g_runner.tests = test;
+      g_runner.tests_tail = test;
+   }
+   else
+   {
+      g_runner.tests_tail->next = test;
+      g_runner.tests_tail = test;
+   }
+
+   g_runner.test_count++;
+}
+
+void
+mctf_register_test_with_flags(const char* name, const char* module, const char* file, mctf_test_func_t func, bool is_negative)
+{
+   mctf_register_test_with_options(name, module, file, func, is_negative, 0);
+}
+
+void
+mctf_register_test(const char* name, const char* module, const char* file, mctf_test_func_t func)
+{
+   mctf_register_test_with_flags(name, module, file, func, false);
+}
+
+void
+mctf_register_integration_test(const char* name, const char* module, const char* file, mctf_test_func_t func)
+{
+   mctf_register_test_with_options(name, module, file, func, false, 0);
+   /* Mark the just-appended test as opt-in (full-suite runs skip it). */
+   if (g_runner.tests_tail != NULL)
+   {
+      g_runner.tests_tail->is_integration = true;
+   }
+}
+
+void
+mctf_register_test_with_max_time(const char* name, const char* module, const char* file, mctf_test_func_t func, unsigned int max_seconds)
+{
+   mctf_register_test_with_options(name, module, file, func, false, max_seconds);
+}
+
+void
+mctf_register_test_with_max_time_negative(const char* name, const char* module, const char* file, mctf_test_func_t func, unsigned int max_seconds)
+{
+   mctf_register_test_with_options(name, module, file, func, true, max_seconds);
+}
+
+/** Find or create a mctf_test_hooks_t record for @p module in the runner. */
+static mctf_test_hooks_t*
+get_or_create_test_hooks(const char* module)
+{
+   mctf_test_hooks_t* h;
+
+   for (h = g_runner.test_hooks; h; h = h->next)
+   {
+      if (strcmp(h->module, module) == 0)
+         return h;
+   }
+
+   h = calloc(1, sizeof(mctf_test_hooks_t));
+   if (!h)
+   {
+      mctf_log_errorf("MCTF: Failed to allocate test hooks for module '%s'\n", module);
+      return NULL;
+   }
+   h->module = strdup(module);
+   if (!h->module)
+   {
+      free(h);
+      return NULL;
+   }
+   h->next = g_runner.test_hooks;
+   g_runner.test_hooks = h;
+   return h;
+}
+
+/** Find or create a mctf_module_hooks_t record for @p module in the runner. */
+static mctf_module_hooks_t*
+get_or_create_module_hooks(const char* module)
+{
+   mctf_module_hooks_t* h;
+
+   for (h = g_runner.module_hooks; h; h = h->next)
+   {
+      if (strcmp(h->module, module) == 0)
+         return h;
+   }
+
+   h = calloc(1, sizeof(mctf_module_hooks_t));
+   if (!h)
+   {
+      mctf_log_errorf("MCTF: Failed to allocate module hooks for module '%s'\n", module);
+      return NULL;
+   }
+   h->module = strdup(module);
+   if (!h->module)
+   {
+      free(h);
+      return NULL;
+   }
+   h->next = g_runner.module_hooks;
+   g_runner.module_hooks = h;
+   return h;
+}
+
+void
+mctf_register_test_setup(const char* module, mctf_hook_func_t func)
+{
+   mctf_test_hooks_t* h;
+
+   if (!g_initialized)
+      mctf_init();
+
+   h = get_or_create_test_hooks(module);
+   if (h)
+      h->setup = func;
+}
+
+void
+mctf_register_test_teardown(const char* module, mctf_hook_func_t func)
+{
+   mctf_test_hooks_t* h;
+
+   if (!g_initialized)
+      mctf_init();
+
+   h = get_or_create_test_hooks(module);
+   if (h)
+      h->teardown = func;
+}
+
+void
+mctf_register_module_setup(const char* module, mctf_hook_func_t func)
+{
+   mctf_module_hooks_t* h;
+
+   if (!g_initialized)
+      mctf_init();
+
+   h = get_or_create_module_hooks(module);
+   if (h)
+      h->setup = func;
+}
+
+void
+mctf_register_module_teardown(const char* module, mctf_hook_func_t func)
+{
+   mctf_module_hooks_t* h;
+
+   if (!g_initialized)
+      mctf_init();
+
+   h = get_or_create_module_hooks(module);
+   if (h)
+      h->teardown = func;
+}
+
+const char*
+mctf_extract_filename(const char* file_path)
+{
+   const char* basename = strrchr(file_path, '/');
+   return basename ? basename + 1 : file_path;
+}
+
+const char*
+mctf_extract_module_name(const char* file_path)
+{
+   /* Extract filename first, then process it to get module name */
+   const char* basename = mctf_extract_filename(file_path);
+
+   /* Remove "test_" prefix if present */
+   if (strncmp(basename, "test_", 5) == 0)
+   {
+      basename += 5;
+   }
+
+   /* Remove ".c" suffix if present */
+   size_t len = strlen(basename);
+   if (len > 2 && strcmp(basename + len - 2, ".c") == 0)
+   {
+      len -= 2;
+   }
+
+   static char module[256];
+   strncpy(module, basename, len);
+   module[len] = '\0';
+   return module;
+}
+
+static bool
+matches_filter(mctf_filter_type_t filter_type, const mctf_test_t* test, const char* filter)
+{
+   /* Integration mode runs exactly the opt-in integration tests. */
+   if (filter_type == MCTF_FILTER_INTEGRATION)
+   {
+      return test->is_integration;
+   }
+
+   /* Integration tests are opt-in: they never run as part of the default
+    * full-suite run, only when explicitly selected with -t/-m/--integration. */
+   if (test->is_integration && filter_type == MCTF_FILTER_NONE)
+   {
+      return false;
+   }
+
+   if (filter_type == MCTF_FILTER_NONE || !filter || filter[0] == '\0')
+   {
+      return true;
+   }
+
+   switch (filter_type)
+   {
+      case MCTF_FILTER_MODULE:
+         return test->module && strstr(test->module, filter) != NULL;
+      case MCTF_FILTER_TEST:
+         return strstr(test->name, filter) != NULL;
+      default:
+         return false;
+   }
+}
+
+int
+mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
+{
+   size_t tests_to_run = 0;
+   mctf_test_t* test;
+
+   if (!g_initialized)
+   {
+      mctf_init();
+   }
+   for (test = g_runner.tests; test; test = test->next)
+   {
+      if (matches_filter(filter_type, test, filter))
+      {
+         tests_to_run++;
+      }
+   }
+
+   if (tests_to_run == 0)
+   {
+      switch (filter_type)
+      {
+         case MCTF_FILTER_NONE:
+            mctf_log_errorf("MCTF: No tests registered (total registered: %zu)\n", g_runner.test_count);
+            break;
+         case MCTF_FILTER_MODULE:
+            mctf_log_errorf("MCTF: No tests found in module '%s'\n", filter);
+            break;
+         case MCTF_FILTER_TEST:
+            mctf_log_errorf("MCTF: No tests found matching filter '%s'\n", filter);
+            break;
+         case MCTF_FILTER_INTEGRATION:
+            mctf_log_errorf("MCTF: No integration tests registered\n");
+            break;
+      }
+      return 0;
+   }
+
+   /* Allocate results array */
+   g_runner.results = calloc(tests_to_run, sizeof(mctf_result_t));
+   if (!g_runner.results)
+   {
+      mctf_log_errorf("MCTF: Failed to allocate memory for results\n");
+      return -1;
+   }
+
+   g_runner.result_count = 0;
+   g_runner.passed_count = 0;
+   g_runner.failed_count = 0;
+   g_runner.skipped_count = 0;
+
+   mctf_logf("\n=== Running MCTF Tests ===\n");
+   switch (filter_type)
+   {
+      case MCTF_FILTER_MODULE:
+         mctf_logf("Module: %s\n", filter);
+         break;
+      case MCTF_FILTER_TEST:
+         mctf_logf("Test filter: %s\n", filter);
+         break;
+      default:
+         break;
+   }
+   mctf_logf("Total tests to run: %zu\n\n", tests_to_run);
+
+   /* Helper variables */
+   const char* current_module = NULL;
+   mctf_test_hooks_t* cur_test_hooks = NULL;
+   mctf_module_hooks_t* cur_module_hooks = NULL;
+
+   for (test = g_runner.tests; test; test = test->next)
+   {
+      if (!matches_filter(filter_type, test, filter))
+      {
+         continue;
+      }
+
+      /* ---- module transition ---- */
+      if (!current_module || strcmp(current_module, test->module) != 0)
+      {
+         /* Tear down the previous module (if any) */
+         if (current_module && cur_module_hooks && cur_module_hooks->teardown)
+         {
+            cur_module_hooks->teardown();
+         }
+
+         if (current_module)
+         {
+            mctf_logf("\n");
+         }
+         mctf_logf("--- %s ---\n", test->module);
+         current_module = test->module;
+
+         /* Find hook registrations for the new module */
+         cur_test_hooks = NULL;
+         for (mctf_test_hooks_t* h = g_runner.test_hooks; h; h = h->next)
+         {
+            if (strcmp(h->module, test->module) == 0)
+            {
+               cur_test_hooks = h;
+               break;
+            }
+         }
+
+         cur_module_hooks = NULL;
+         for (mctf_module_hooks_t* h = g_runner.module_hooks; h; h = h->next)
+         {
+            if (strcmp(h->module, test->module) == 0)
+            {
+               cur_module_hooks = h;
+               break;
+            }
+         }
+
+         /* Set up the new module */
+         if (cur_module_hooks && cur_module_hooks->setup)
+         {
+            cur_module_hooks->setup();
+         }
+      }
+      /* ---- end module transition ---- */
+
+      off_t log_start = 0;
+      mctf_capture_log_boundary(&log_start);
+
+      mctf_result_t* result = &g_runner.results[g_runner.result_count];
+      result->test_name = test->name;
+      result->file = test->file;
+      result->passed = false;
+      result->skipped = false;
+      result->error_code = 0;
+      result->error_message = NULL;
+      result->elapsed_ms = 0;
+
+      struct timespec start_time, end_time;
+      clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+      mctf_errno = 0;
+      if (mctf_errmsg)
+      {
+         free(mctf_errmsg);
+         mctf_errmsg = NULL;
+      }
+
+      /* Per-test setup */
+      if (cur_test_hooks && cur_test_hooks->setup)
+      {
+         cur_test_hooks->setup();
+      }
+
+      int ret = test->func();
+
+      /* Per-test teardown (always, regardless of test outcome) */
+      if (cur_test_hooks && cur_test_hooks->teardown)
+      {
+         cur_test_hooks->teardown();
+      }
+
+      clock_gettime(CLOCK_MONOTONIC, &end_time);
+
+      long elapsed_ms = (end_time.tv_sec - start_time.tv_sec) * 1000 +
+                        (end_time.tv_nsec - start_time.tv_nsec) / 1000000;
+
+      result->elapsed_ms = elapsed_ms;
+
+      long total_seconds = elapsed_ms / 1000;
+      long hours = total_seconds / 3600;
+      long minutes = (total_seconds % 3600) / 60;
+      long seconds = total_seconds % 60;
+      long milliseconds = elapsed_ms % 1000;
+
+      if (ret == MCTF_CODE_SKIPPED)
+      {
+         result->skipped = true;
+         result->error_code = mctf_errno;                                  // Store line number
+         result->error_message = mctf_errmsg ? strdup(mctf_errmsg) : NULL; // Store skip message
+         g_runner.skipped_count++;
+
+         mctf_logf("  %s (%02ld:%02ld:%02ld,%03ld) [SKIP] (%s:%d)\n",
+                   test->name, hours, minutes, seconds, milliseconds,
+                   test->file, result->error_code);
+
+         mctf_errno = 0;
+         if (mctf_errmsg)
+         {
+            free(mctf_errmsg);
+            mctf_errmsg = NULL;
+         }
+      }
+      else
+      {
+         off_t log_end = 0;
+         bool has_log_errors = false;
+         char* log_error_summary = NULL;
+
+         mctf_capture_log_boundary(&log_end);
+
+         mctf_analyze_and_write_test_log_slice(test->module, test->name, log_start, log_end,
+                                               &has_log_errors, &log_error_summary);
+
+         bool base_pass = (ret == 0 && mctf_errno == 0);
+
+         /* Performance gate */
+         bool timeout = (test->max_elapsed_sec > 0 &&
+                         (unsigned long)elapsed_ms > (unsigned long)test->max_elapsed_sec * 1000UL);
+
+         if (timeout)
+         {
+            result->passed = false;
+            result->error_code = 0;
+            if (result->error_message)
+            {
+               free((void*)result->error_message);
+               result->error_message = NULL;
+            }
+            {
+               char buf[128];
+               snprintf(buf, sizeof(buf),
+                        "Test exceeded maximum time: %ld.%03lds (limit %us)",
+                        elapsed_ms / 1000, elapsed_ms % 1000, test->max_elapsed_sec);
+               result->error_message = strdup(buf);
+            }
+            g_runner.failed_count++;
+            mctf_logf("  %s (%02ld:%02ld:%02ld,%03ld) [FAIL]\n",
+                      test->name, hours, minutes, seconds, milliseconds);
+            mctf_logf("    %s\n", result->error_message);
+         }
+         else if (base_pass)
+         {
+            /* Passed by assertions; now enforce log cleanliness for positive tests */
+            if (!test->is_negative && has_log_errors)
+            {
+               result->passed = false;
+               result->error_code = 0;
+
+               if (result->error_message)
+               {
+                  free((void*)result->error_message);
+               }
+               if (log_error_summary != NULL)
+               {
+                  result->error_message = log_error_summary;
+                  log_error_summary = NULL;
+               }
+               else
+               {
+                  result->error_message = strdup("Unexpected ERROR entries in pgvictoria.log for this test");
+               }
+
+               g_runner.failed_count++;
+               mctf_logf("  %s (%02ld:%02ld:%02ld,%03ld) [FAIL]\n",
+                         test->name, hours, minutes, seconds, milliseconds);
+               if (result->error_message)
+               {
+                  mctf_logf("    Log errors:\n%s", result->error_message);
+               }
+            }
+            else
+            {
+               result->passed = true;
+               g_runner.passed_count++;
+               mctf_logf("%s (%02ld:%02ld:%02ld,%03ld) [PASS]\n",
+                         test->name, hours, minutes, seconds, milliseconds);
+            }
+         }
+         else
+         {
+            /* Test failed by its own assertions */
+            result->passed = false;
+            result->error_code = (ret != 0) ? ret : mctf_errno;
+            result->error_message = mctf_errmsg ? strdup(mctf_errmsg) : NULL;
+            if (mctf_errmsg)
+            {
+               free(mctf_errmsg);
+               mctf_errmsg = NULL;
+            }
+            g_runner.failed_count++;
+            mctf_logf("  %s (%02ld:%02ld:%02ld,%03ld) [FAIL] (%s:%d)\n",
+                      test->name, hours, minutes, seconds, milliseconds,
+                      test->file, result->error_code);
+         }
+
+         if (log_error_summary != NULL)
+         {
+            free(log_error_summary);
+         }
+      }
+
+      g_runner.result_count++;
+   }
+
+   /* Tear down the last module */
+   if (current_module && cur_module_hooks && cur_module_hooks->teardown)
+   {
+      cur_module_hooks->teardown();
+   }
+
+   return (int)g_runner.failed_count;
+}
+
+void
+mctf_print_summary(void)
+{
+   mctf_logf("\n=== Test Summary ===\n");
+   mctf_logf("Total tests: %zu\n", g_runner.result_count);
+   mctf_logf("Passed: %zu\n", g_runner.passed_count);
+   mctf_logf("Failed: %zu\n", g_runner.failed_count);
+   mctf_logf("Skipped: %zu\n", g_runner.skipped_count);
+
+   if (g_runner.skipped_count > 0)
+   {
+      mctf_logf("\nSkipped tests:\n");
+      for (size_t i = 0; i < g_runner.result_count; i++)
+      {
+         if (g_runner.results[i].skipped)
+         {
+            if (g_runner.results[i].error_message)
+            {
+               mctf_logf("  - %s (%s:%d) [SKIP] - %s\n",
+                         g_runner.results[i].test_name,
+                         g_runner.results[i].file,
+                         g_runner.results[i].error_code,
+                         g_runner.results[i].error_message);
+            }
+            else
+            {
+               mctf_logf("  - %s (%s:%d) [SKIP]\n",
+                         g_runner.results[i].test_name,
+                         g_runner.results[i].file,
+                         g_runner.results[i].error_code);
+            }
+         }
+      }
+   }
+
+   if (g_runner.failed_count > 0)
+   {
+      mctf_logf("\nFailed tests:\n");
+      for (size_t i = 0; i < g_runner.result_count; i++)
+      {
+         mctf_result_t* r = &g_runner.results[i];
+         if (!r->passed && !r->skipped)
+         {
+            if (r->error_code == 0 && r->error_message != NULL &&
+                strstr(r->error_message, "Errors:") != NULL)
+            {
+               long elapsed_ms = r->elapsed_ms;
+               long total_seconds = elapsed_ms / 1000;
+               long hours = total_seconds / 3600;
+               long minutes = (total_seconds % 3600) / 60;
+               long seconds = total_seconds % 60;
+               long milliseconds = elapsed_ms % 1000;
+
+               mctf_logf("  %s (%02ld:%02ld:%02ld,%03ld) [FAIL]\n",
+                         r->test_name, hours, minutes, seconds, milliseconds);
+               mctf_logf("    Log errors:\n%s", r->error_message);
+            }
+            else if (r->error_message)
+            {
+               if (r->error_code != 0)
+               {
+                  mctf_logf("  - %s (%s:%d) - %s\n",
+                            r->test_name,
+                            r->file,
+                            r->error_code,
+                            r->error_message);
+               }
+               else
+               {
+                  mctf_logf("  - %s (%s) - %s\n",
+                            r->test_name,
+                            r->file,
+                            r->error_message);
+               }
+            }
+            else
+            {
+               mctf_logf("  - %s (%s:%d)\n",
+                         r->test_name,
+                         r->file,
+                         r->error_code);
+            }
+         }
+      }
+   }
+
+   mctf_logf("\n");
+}
+
+const mctf_result_t*
+mctf_get_results(size_t* count)
+{
+   if (count)
+   {
+      *count = g_runner.result_count;
+   }
+   return g_runner.results;
+}
