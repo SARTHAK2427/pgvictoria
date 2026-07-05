@@ -58,23 +58,35 @@ enum pgvictoria_output_format {
 };
 
 /**
+ * Which GUCs the report should list. Selected with -t/--type in both online and
+ * file mode. "changed" (the default) hides settings whose value matches the
+ * baseline default; "full" lists every setting.
+ */
+enum pgvictoria_report_type {
+   PGVICTORIA_REPORT_CHANGED = 0,
+   PGVICTORIA_REPORT_FULL,
+};
+
+/**
  * Generate a configuration report for the specified server online
  * @param server The server index
  * @param format The output format (text, HTML, or Markdown)
+ * @param type Which GUCs to list (changed or full)
  * @param output_file Destination path for the report (required)
  * @return 0 upon success, otherwise 1
  */
-int pgvictoria_report_online(int server, enum pgvictoria_output_format format, char* output_file);
+int pgvictoria_report_online(int server, enum pgvictoria_output_format format, enum pgvictoria_report_type type, char* output_file);
 
 /**
  * Generate a configuration report from a file directly on disk
  * @param filename The configuration file path
  * @param format The output format (text, HTML, or Markdown)
+ * @param type Which GUCs to list (changed or full)
  * @param output_file Destination path for the report (required)
  * @param override_version The baseline version to compare against, or 0 to auto-detect
  * @return 0 upon success, otherwise 1
  */
-int pgvictoria_report_file(char* filename, enum pgvictoria_output_format format, char* output_file, int override_version);
+int pgvictoria_report_file(char* filename, enum pgvictoria_output_format format, enum pgvictoria_report_type type, char* output_file, int override_version);
 
 #ifdef __cplusplus
 }

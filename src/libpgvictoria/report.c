@@ -203,9 +203,11 @@ trim_and_extract_key_value(char* line, char* key, char* value)
  * Classify a single key/value against the baseline (Default / Modified / Custom)
  * and append it as a diff item to the report deque. Shared by both the file and
  * online datasources so the report is built identically regardless of source.
+ * When skip_defaults is set, rows whose value matches the baseline default are not
+ * added, so every renderer simply outputs whatever the deque contains.
  */
 static void
-report_add_diff_item(struct deque* items, struct json* baseline, char* key, char* val)
+report_add_diff_item(struct deque* items, struct json* baseline, char* key, char* val, int skip_defaults)
 {
    /*
     * SHOW ALL returns an empty GUC setting as a zero-length column, which the
@@ -260,6 +262,13 @@ report_add_diff_item(struct deque* items, struct json* baseline, char* key, char
       status_text = (cur_val[0] == '\0') ? "Default" : "Modified";
    }
 
+   /* In "changed" mode, drop settings whose value matches the baseline default. */
+   if (skip_defaults && strcmp(status_text, "Default") == 0)
+   {
+      free(default_val_str);
+      return;
+   }
+
    struct pgvictoria_diff_item* item = malloc(sizeof(struct pgvictoria_diff_item));
    if (item)
    {
@@ -280,12 +289,18 @@ report_add_diff_item(struct deque* items, struct json* baseline, char* key, char
 /*
  * Render the diff deque as a plain-text table to the given stream. Shared by both
  * the file and online datasources; mode_desc fills the report header (e.g. "Online
- * Mode" or "File Mode: <path>"). Rows whose status is "Default" are hidden.
+ * Mode" or "File Mode: <path>"). Every row in the deque is printed; which rows the
+ * deque contains (all vs. non-default only) is decided upstream at deque formation.
  */
 static void
 report_print_text(FILE* out, struct deque* items, int version, const char* mode_desc)
 {
-   fprintf(out, "\nPostgreSQL %d Configuration Report (%s)\n", version, mode_desc);
+   fprintf(out, "\nPostgreSQL %d Configuration Difference Report\n", version);
+   if (mode_desc)
+   {
+      fprintf(out, "Report Scope: %s\n", mode_desc);
+   }
+   fprintf(out, "Baseline Version: PostgreSQL %d\n", version);
    char* os_name = NULL;
    int k_major = 0, k_minor = 0, k_patch = 0;
    if (pgvictoria_os_kernel_version(&os_name, &k_major, &k_minor, &k_patch) == 0)
@@ -293,9 +308,9 @@ report_print_text(FILE* out, struct deque* items, int version, const char* mode_
       fprintf(out, "System: %s %d.%d.%d\n", os_name, k_major, k_minor, k_patch);
       free(os_name);
    }
-   fprintf(out, "=================================================================================\n");
-   fprintf(out, "%-40s | %-20s | %-20s\n", "Key", "Default", "Current");
-   fprintf(out, "---------------------------------------------------------------------------------\n");
+   fprintf(out, "===================================================================================================\n");
+   fprintf(out, "%-40s | %-20s | %-20s | %-10s\n", "Configuration Key", "Baseline Default", "Current Value", "Status");
+   fprintf(out, "---------------------------------------------------------------------------------------------------\n");
 
    struct deque_iterator* it = NULL;
    pgvictoria_deque_iterator_create(items, &it);
@@ -303,13 +318,10 @@ report_print_text(FILE* out, struct deque* items, int version, const char* mode_
    {
       struct pgvictoria_diff_item* row = (struct pgvictoria_diff_item*)it->value->data;
 
-      if (strcmp(row->status, "Default") != 0)
-      {
-         fprintf(out, "%-40s | %-20s | %-20s\n", row->key, row->baseline_val, row->current_val);
-      }
+      fprintf(out, "%-40s | %-20s | %-20s | %-10s\n", row->key, row->baseline_val, row->current_val, row->status);
    }
    pgvictoria_deque_iterator_destroy(it);
-   fprintf(out, "=================================================================================\n");
+   fprintf(out, "===================================================================================================\n");
 }
 
 /*
@@ -372,7 +384,7 @@ report_render(struct deque* items, int version, enum pgvictoria_output_format fo
 }
 
 int
-pgvictoria_report_online(int server, enum pgvictoria_output_format format, char* output_file)
+pgvictoria_report_online(int server, enum pgvictoria_output_format format, enum pgvictoria_report_type type, char* output_file)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
    struct server* srv;
@@ -459,10 +471,12 @@ pgvictoria_report_online(int server, enum pgvictoria_output_format format, char*
    struct deque* items = NULL;
    pgvictoria_deque_create(false, &items);
 
+   int skip_defaults = (type == PGVICTORIA_REPORT_CHANGED);
+
    struct tuple* curr = all_response->tuples;
    while (curr)
    {
-      report_add_diff_item(items, baseline, curr->data[0], curr->data[1]);
+      report_add_diff_item(items, baseline, curr->data[0], curr->data[1], skip_defaults);
       curr = curr->next;
    }
 
@@ -543,7 +557,7 @@ detect_pg_version_from_file(const char* filename)
 }
 
 int
-pgvictoria_report_file(char* filename, enum pgvictoria_output_format format, char* output_file, int override_version)
+pgvictoria_report_file(char* filename, enum pgvictoria_output_format format, enum pgvictoria_report_type type, char* output_file, int override_version)
 {
    int version = 0;
    struct json* baseline = NULL;
@@ -620,6 +634,8 @@ pgvictoria_report_file(char* filename, enum pgvictoria_output_format format, cha
    struct deque* items = NULL;
    pgvictoria_deque_create(false, &items);
 
+   int skip_defaults = (type == PGVICTORIA_REPORT_CHANGED);
+
    char line[1024];
    char key[128];
    char value[1024];
@@ -632,7 +648,7 @@ pgvictoria_report_file(char* filename, enum pgvictoria_output_format format, cha
 
       if (strlen(key) > 0 && strlen(value) > 0)
       {
-         report_add_diff_item(items, baseline, key, value);
+         report_add_diff_item(items, baseline, key, value, skip_defaults);
       }
    }
 

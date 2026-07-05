@@ -11,7 +11,7 @@ Command line interface for pgvictoria
 SYNOPSIS
 ========
 
-pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -H HOST ] [ -P PORT ] [ -U USER ] [ -W PASSWORD ] [ -f FORMAT ] [ -o OUTPUT_FILE ] [ -V ] [ -? ] [ COMMAND ]
+pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -H HOST ] [ -P PORT ] [ -U USER ] [ -W PASSWORD ] [ -f FORMAT ] [ -t TYPE ] [ -o OUTPUT_FILE ] [ -V ] [ -? ] [ COMMAND ]
 
 DESCRIPTION
 ===========
@@ -44,6 +44,9 @@ OPTIONS
 
 -f, --format FORMAT
   Select the report format: text (default), html, or md (markdown is accepted as a synonym for md). Honored in both online and offline modes.
+
+-t, --type TYPE
+  Select which settings to list: changed (default) shows only settings whose value differs from the version baseline, while full lists every setting. Honored in both online and offline modes.
 
 -o, --output OUTPUT_FILE
   Write the report to OUTPUT_FILE (its parent directory is created if needed). Honored in both modes and required for every format; the report command errors without it.

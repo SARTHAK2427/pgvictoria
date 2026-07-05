@@ -104,6 +104,7 @@ usage(void)
    printf("  -W, --password PASSWORD       Set the database password\n");
    printf("  -pg, --pg PG_VERSION          Override the baseline version to compare against (14-19)\n");
    printf("  -f, --format FORMAT           Report format: text|html|md (default: text)\n");
+   printf("  -t, --type TYPE               Report type: full|changed (default: changed)\n");
    printf("  -o, --output OUTPUT_FILE      Write the report to OUTPUT_FILE (required)\n");
    printf("  -V, --version                 Display version information\n");
    printf("  -?, --help                    Display help\n");
@@ -129,6 +130,7 @@ main(int argc, char** argv)
    char* password = NULL;
    int override_version = 0;
    enum pgvictoria_output_format output_format = PGVICTORIA_OUTPUT_TEXT;
+   enum pgvictoria_report_type report_type = PGVICTORIA_REPORT_CHANGED;
    char* output_file = NULL;
 
    cli_option options[] = {
@@ -142,6 +144,7 @@ main(int argc, char** argv)
       {"W", "password", true},
       {"pg", "pg", true},
       {"f", "format", true},
+      {"t", "type", true},
       {"o", "output", true},
    };
 
@@ -239,6 +242,23 @@ main(int argc, char** argv)
          else
          {
             warnx("pgvictoria-cli: Unsupported output format: %s (expected text|html|md)", optarg);
+            exit(1);
+         }
+      }
+      else if (!strcmp(optname, "t") || !strcmp(optname, "type"))
+      {
+         /* Select which GUCs to list; honored in both online and file mode. */
+         if (!strcmp(optarg, "changed"))
+         {
+            report_type = PGVICTORIA_REPORT_CHANGED;
+         }
+         else if (!strcmp(optarg, "full"))
+         {
+            report_type = PGVICTORIA_REPORT_FULL;
+         }
+         else
+         {
+            warnx("pgvictoria-cli: Unsupported report type: %s (expected full|changed)", optarg);
             exit(1);
          }
       }
@@ -406,7 +426,7 @@ main(int argc, char** argv)
 
       if (parsed.args[0] != NULL)
       {
-         if (pgvictoria_report_file(parsed.args[0], output_format, output_file, override_version))
+         if (pgvictoria_report_file(parsed.args[0], output_format, report_type, output_file, override_version))
          {
             warnx("pgvictoria-cli: Failed to generate file report");
             goto error;
@@ -414,7 +434,7 @@ main(int argc, char** argv)
       }
       else
       {
-         if (pgvictoria_report_online(0, output_format, output_file))
+         if (pgvictoria_report_online(0, output_format, report_type, output_file))
          {
             warnx("pgvictoria-cli: Failed to generate report");
             goto error;

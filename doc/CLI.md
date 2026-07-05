@@ -5,7 +5,7 @@
 ## Usage
 
 ```bash
-pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -f FORMAT ] [ -o OUTPUT_FILE ] [ COMMAND ]
+pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -f FORMAT ] [ -t TYPE ] [ -o OUTPUT_FILE ] [ COMMAND ]
 ```
 
 ## Options
@@ -34,6 +34,9 @@ pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -f FORM
 *   **-f, --format FORMAT**
     Select the report format: `text` (default), `html`, or `md` (`markdown` is accepted as a synonym for `md`). Honored in both online and offline modes.
 
+*   **-t, --type TYPE**
+    Select which settings to list: `changed` (default) shows only settings whose value differs from the version baseline, while `full` lists every setting. Honored in both online and offline modes.
+
 *   **-o, --output OUTPUT_FILE**
     Write the report to `OUTPUT_FILE` (its parent directory is created if needed). Honored in both modes and required for every format; the `report` command errors without it.
 
@@ -47,10 +50,10 @@ pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -f FORM
 
 ### report
 
-Generates a configuration comparison report against the target version's default out-of-the-box configuration baseline. The format (`-f`) and destination (`-o`) flags work identically in both modes; the only difference is the data source.
+Generates a configuration comparison report against the target version's default out-of-the-box configuration baseline. The format (`-f`), type (`-t`), and destination (`-o`) flags work identically in both modes; the only difference is the data source. By default only changed settings are listed; pass `-t full` to include settings left at their baseline default.
 
 ```bash
-pgvictoria-cli [ -f FORMAT ] [ -o OUTPUT_FILE ] report [ input_config_file ]
+pgvictoria-cli [ -f FORMAT ] [ -t TYPE ] [ -o OUTPUT_FILE ] report [ input_config_file ]
 ```
 
 #### Online Mode (no positional argument)
