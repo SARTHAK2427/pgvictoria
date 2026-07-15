@@ -11,7 +11,7 @@ Command line interface for pgvictoria
 SYNOPSIS
 ========
 
-pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -H HOST ] [ -P PORT ] [ -U USER ] [ -W PASSWORD ] [ -f FORMAT ] [ -t TYPE ] [ -o OUTPUT_FILE ] [ -V ] [ -? ] [ COMMAND ]
+pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg VERSION ] [ -H HOST ] [ -P PORT ] [ -U USER ] [ -W PASSWORD ] [ -f FORMAT ] [ -t TYPE ] [ -o OUTPUT_FILE ] [ -V ] [ -? ] [ COMMAND ]
 
 DESCRIPTION
 ===========
@@ -27,7 +27,7 @@ OPTIONS
 -u, --users FILE
   Set the path to the pgvictoria_users.conf configuration file. Default is /etc/pgvictoria/pgvictoria_users.conf.
 
--pg PG_VERSION
+-pg, --postgresql VERSION
   Override the PostgreSQL baseline version to compare against. Valid range is 14 to 19.
 
 -H, --host HOST

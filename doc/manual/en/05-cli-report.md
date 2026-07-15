@@ -34,7 +34,7 @@ pgvictoria-cli -c pgvictoria-cli.conf -f md -o report.md report /etc/postgresql/
 `-o` is required for every format; the command errors if you omit it.
 
 ### Forcing baseline versions
-If the configuration file does not declare its version in comments, or if you want to inspect how your configuration compares to a different PostgreSQL release, use the `-pg` (or `--pg`) override flag:
+If the configuration file does not declare its version in comments, or if you want to inspect how your configuration compares to a different PostgreSQL release, use the `-pg` (or `--postgresql`) override flag:
 
 ```bash
 pgvictoria-cli -c pgvictoria-cli.conf -pg 18 -f html -o report.html report /etc/postgresql/18/main/postgresql.conf

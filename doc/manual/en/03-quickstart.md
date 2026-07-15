@@ -23,7 +23,7 @@ Options:
   -P, --port PORT               Set the PostgreSQL port (default: 5432)
   -U, --user USER               Set the database user (default: postgres)
   -W, --password PASSWORD       Set the database password
-  -pg, --pg PG_VERSION          Override the baseline version to compare against (14-19)
+  -pg, --postgresql VERSION     Override the baseline version to compare against (14-19)
   -f, --format FORMAT           Report format: text|html|md (default: text)
   -o, --output OUTPUT_FILE      Write the report to OUTPUT_FILE (required)
   -V, --version                 Display version information

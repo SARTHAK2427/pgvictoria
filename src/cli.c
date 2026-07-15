@@ -102,7 +102,7 @@ usage(void)
    printf("  -P, --port PORT               Set the PostgreSQL port (default: 5432)\n");
    printf("  -U, --user USER               Set the database user (default: postgres)\n");
    printf("  -W, --password PASSWORD       Set the database password\n");
-   printf("  -pg, --pg PG_VERSION          Override the baseline version to compare against (14-19)\n");
+   printf("  -pg, --postgresql VERSION     Override the baseline version to compare against (14-19)\n");
    printf("  -f, --format FORMAT           Report format: text|html|md (default: text)\n");
    printf("  -t, --type TYPE               Report type: full|changed (default: changed)\n");
    printf("  -o, --output OUTPUT_FILE      Write the report to OUTPUT_FILE (required)\n");
@@ -142,7 +142,7 @@ main(int argc, char** argv)
       {"P", "port", true},
       {"U", "user", true},
       {"W", "password", true},
-      {"pg", "pg", true},
+      {"pg", "postgresql", true},
       {"f", "format", true},
       {"t", "type", true},
       {"o", "output", true},
@@ -210,7 +210,7 @@ main(int argc, char** argv)
       {
          password = optarg;
       }
-      else if (!strcmp(optname, "pg"))
+      else if (!strcmp(optname, "pg") || !strcmp(optname, "postgresql"))
       {
          if (!pgvictoria_is_number(optarg, 10))
          {

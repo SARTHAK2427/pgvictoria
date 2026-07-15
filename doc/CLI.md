@@ -5,7 +5,7 @@
 ## Usage
 
 ```bash
-pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -f FORMAT ] [ -t TYPE ] [ -o OUTPUT_FILE ] [ COMMAND ]
+pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg VERSION ] [ -f FORMAT ] [ -t TYPE ] [ -o OUTPUT_FILE ] [ COMMAND ]
 ```
 
 ## Options
@@ -28,7 +28,7 @@ pgvictoria-cli [ -c CONFIG_FILE ] [ -u USERS_FILE ] [ -pg PG_VERSION ] [ -f FORM
 *   **-W, --password PASSWORD**
     Set the database password for authentication.
 
-*   **-pg, --pg PG_VERSION**
+*   **-pg, --postgresql VERSION**
     Override the PostgreSQL baseline version to compare against. Useful in offline file reporting modes when no version can be auto-detected. Valid values are `14` to `19`.
 
 *   **-f, --format FORMAT**
