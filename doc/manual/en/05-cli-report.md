@@ -10,12 +10,15 @@ The reporting engine supports:
 *   **Online scan**: Querying active configurations directly from a live PostgreSQL instance.
 *   **Offline scan**: Performing static difference analysis on a local `postgresql.conf` file.
 *   **Version override**: Forcing audits against a specific PostgreSQL baseline version (14 through 19).
-*   **HTML / Markdown report**: Exporting audits to clean, professional, high-contrast monochrome HTML or Markdown documents.
+*   **HTML report**: Exporting audits to clean, professional, high-contrast monochrome HTML documents.
+*   **Markdown report**: Exporting audits to Markdown documents.
 
 ## Usage
 
+Every report is written to the output path given by `-o`, whatever the format; the command errors if you omit it.
+
 ### Text reports
-Run the `report` command with the path to the PostgreSQL configuration file and an output path (`-o`). The format defaults to `text`:
+Run the `report` command with the path to the PostgreSQL configuration file. The format defaults to `text`:
 
 ```bash
 pgvictoria-cli -c pgvictoria-cli.conf -o report.txt report /etc/postgresql/18/main/postgresql.conf
@@ -23,15 +26,19 @@ pgvictoria-cli -c pgvictoria-cli.conf -o report.txt report /etc/postgresql/18/ma
 
 This writes a text diff showing the baseline defaults versus the values defined in the file.
 
-### HTML / Markdown reports
-To export the audit to a file, choose the format with `-f` and the destination with `-o`:
+### HTML reports
+To export the audit as an HTML document, use `-f html` with the destination `-o`:
 
 ```bash
 pgvictoria-cli -c pgvictoria-cli.conf -f html -o report.html report /etc/postgresql/18/main/postgresql.conf
-pgvictoria-cli -c pgvictoria-cli.conf -f md -o report.md report /etc/postgresql/18/main/postgresql.conf
 ```
 
-`-o` is required for every format; the command errors if you omit it.
+### Markdown reports
+To export the audit as a Markdown document, use `-f md` (`markdown` is accepted as a synonym):
+
+```bash
+pgvictoria-cli -c pgvictoria-cli.conf -f md -o report.md report /etc/postgresql/18/main/postgresql.conf
+```
 
 ### Forcing baseline versions
 If the configuration file does not declare its version in comments, or if you want to inspect how your configuration compares to a different PostgreSQL release, use the `-pg` (or `--postgresql`) override flag:
